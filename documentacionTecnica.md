@@ -142,7 +142,7 @@ Derivado del flujo de negocio core, el prototipo funcional a presentar en la pri
 
 - Descripción: A partir del monto total confirmado del comprobante, el sistema calcula las deudas de los participantes según la modalidad de reparto seleccionada: reparto equitativo o reparto por ítems. En el reparto equitativo, el monto se divide entre los participantes; en el reparto por ítems, la deuda de cada participante se determina según los ítems que tenga asignados.
 
-- Criterio de Aceptación Técnico (SW707): El algoritmo de división debe implementar programación por contratos (Design by Contract). Se debe evaluar la invariante de que la suma de las deudas fraccionadas generadas sea matemáticamente equivalente al monto bruto original antes de persistir los datos en el motor relacional.
+- Criterio de Aceptación Técnico (SW707): El algoritmo de división debe implementar programación por contratos (Design by Contract). Se debe evaluar la invariante de que la suma de las deudas fraccionadas generadas sea matemáticamente equivalente al monto total del comprobante antes de persistir los datos en el motor relacional.
 
 #### RF5: Amortización y Control Transaccional (Concurrencia)
 
