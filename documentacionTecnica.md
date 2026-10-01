@@ -70,7 +70,7 @@ Los usuarios interactúan dentro de "Eventos" (ej. "Viaje a Cusco", "Cena de Fin
 
 #### C. Comprobantes y Extracción:
 
-Dentro de un Evento, cualquier participante puede subir un comprobante. El sistema extrae el texto, el usuario confirma el total, y el motor genera registros en la tabla de Deudas.
+El sistema extrae la información del comprobante y el usuario verifica los datos obtenidos. El gasto podrá dividirse mediante reparto equitativo entre los participantes o mediante reparto por ítems, asignando los ítems consumidos a cada participante.
 
 #### D. Matriz de Deudas:
 
