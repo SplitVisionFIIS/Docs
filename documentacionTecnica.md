@@ -62,7 +62,7 @@ Para responder a la necesidad de trazabilidad en las transacciones concurrentes,
 
 #### A. Usuarios Persistentes:
 
-Cada actor en el sistema requiere una cuenta propia (ID único, email, password) para iniciar sesión de forma independiente. No existen "sesiones grupales" ni un único usuario que anota por todos. Esta identidad persistente es el eje para aplicar bloqueos (locks) a nivel de fila en la base de datos.
+Cada actor en el sistema requiere una cuenta propia (ID único, username, email, password) para iniciar sesión de forma independiente. El username debe ser único dentro del sistema y permitirá identificar y buscar usuarios para su vinculación a eventos. No existen "sesiones grupales" ni un único usuario que anota por todos. Esta identidad persistente es el eje para aplicar bloqueos (locks) a nivel de fila en la base de datos.
 
 #### B. Eventos (Agrupadores Temporales):
 
@@ -88,7 +88,7 @@ Para garantizar la comprensión del dominio de negocio y sentar las bases de la 
 
 #### Paso 1: Inicialización de Dominio (Creación del Evento)
 
-- Acción del Usuario: Carlos inicializa un nuevo Evento ("Salida") y vincula a Angel y Gonzalo.
+- Acción del Usuario: Carlos inicializa un nuevo Evento ("Salida") y para vincular a Angel y Gonzalo busca a los participantes registrados mediante su username o correo electrónico y los vincula al Evento.
 
 - Comportamiento del Sistema: El motor instancia una nueva entidad lógica (Evento) en la capa de persistencia. Se establecen relaciones de pertenencia entre los usuarios autenticados y este contenedor. Esta agrupación actúa como un límite de contexto, garantizando que las consultas de saldos y permisos de escritura queden aislados y protegidos únicamente para los miembros vinculados.
 
@@ -128,13 +128,13 @@ Derivado del flujo de negocio core, el prototipo funcional a presentar en la pri
 
 #### RF1: Gestión de Identidad y Trazabilidad
 
-- Descripción: El sistema debe permitir el registro y autenticación básica de los usuarios para actuar como actores independientes y persistentes.
+- Descripción: El sistema debe permitir el registro y autenticación básica de los usuarios para actuar como actores independientes y persistentes. Durante el registro, el usuario debe establecer un username único que permita su identificación y búsqueda dentro del sistema.
 
 - Criterio de Aceptación Técnico: Toda transacción (creación de evento, carga de comprobante, pago de deuda) debe estar obligatoriamente vinculada al identificador único del usuario en sesión, garantizando la trazabilidad necesaria para las operaciones transaccionales.
 
 #### RF2: Agrupación y Límites de Contexto (Eventos)
 
-- Descripción: Un usuario debe poder inicializar un Evento lógico y vincular a otros usuarios registrados al mismo.
+- Descripción: Un usuario debe poder inicializar un Evento lógico y vincular a otros usuarios registrados mediante la búsqueda por username o correo electrónico.
 
 - Criterio de Aceptación Técnico: Las consultas de saldos y las operaciones de escritura deben estar estrictamente aisladas al contexto del Evento, previniendo la fuga de datos o modificaciones no autorizadas por usuarios externos a la agrupación.
 
