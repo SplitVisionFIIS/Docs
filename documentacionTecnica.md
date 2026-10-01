@@ -84,43 +84,37 @@ El siguiente diagrama detalla la interacción asíncrona y la resolución del es
 
 ### 2.4. Explicación del Flujo principal y comportamiento del sistema
 
-Para garantizar la comprensión del dominio de negocio y sentar las bases de la defensa técnica, se describe el ciclo de vida completo de una transacción utilizando el siguiente escenario de prueba: Los usuarios Carlos, Angel y Gonzalo comparten una salida. Carlos realiza el pago inicial de S/ 90.00 y el sistema debe gestionar la recuperación de los saldos cruzados.
+Para garantizar la comprensión del dominio de negocio y sentar las bases de la defensa técnica, se describe el ciclo de vida completo de una transacción utilizando el siguiente escenario de prueba: Los usuarios Carlos, Angel y Gonzalo comparten una salida. Carlos realiza el pago inicial de la cuenta y el sistema debe gestionar la recuperación de los saldos cruzados.
 
 #### Paso 1: Inicialización de Dominio (Creación del Evento)
 
-- Acción del Usuario: Carlos inicializa un nuevo Evento ("Salida") y para vincular a Angel y Gonzalo busca a los participantes registrados mediante su username o correo electrónico y los vincula al Evento.
-
-- Comportamiento del Sistema: El motor instancia una nueva entidad lógica (Evento) en la capa de persistencia. Se establecen relaciones de pertenencia entre los usuarios autenticados y este contenedor. Esta agrupación actúa como un límite de contexto, garantizando que las consultas de saldos y permisos de escritura queden aislados y protegidos únicamente para los miembros vinculados.
+* Acción del Usuario: Carlos inicializa un nuevo Evento ("Salida") y para vincular a Angel y Gonzalo busca a los participantes registrados mediante su username o correo electrónico y los vincula al Evento.
+* Comportamiento del Sistema: El motor instancia una nueva entidad lógica (Evento) en la capa de persistencia. Se establecen relaciones de pertenencia entre los usuarios autenticados y este contenedor. Esta agrupación actúa como un límite de contexto, garantizando que las consultas de saldos y permisos de escritura queden aislados y protegidos únicamente para los miembros vinculados.
 
 #### Paso 2: Recepción y Delegación Asíncrona (Carga del Comprobante)
 
-- Acción del Usuario: Carlos carga la fotografía del comprobante por S/ 90.00 para no ingresar el gasto manualmente.
-
-- Comportamiento del Sistema: El backend recibe el archivo y ejecuta validaciones defensivas sobre el formato y tamaño de la imagen. Para prevenir el bloqueo del hilo de ejecución web durante la comunicación con el servicio OCR externo, el sistema delega el payload a una cola de procesamiento en segundo plano. Inmediatamente, retorna un estado de "Procesamiento en curso" al cliente, manteniendo la disponibilidad y capacidad de respuesta del sistema.
+* Acción del Usuario: Carlos carga la fotografía del comprobante para no ingresar el gasto manualmente.
+* Comportamiento del Sistema: El backend recibe el archivo y ejecuta validaciones defensivas sobre el formato y tamaño de la imagen. Para prevenir el bloqueo del hilo de ejecución web durante la comunicación con el servicio OCR externo, el sistema delega el payload a una cola de procesamiento en segundo plano. Inmediatamente, retorna un estado de "Procesamiento en curso" al cliente, manteniendo la disponibilidad y capacidad de respuesta del sistema.
 
 #### Paso 3: Extracción, Verificación y Diseño por Contratos
 
-- Acción del Usuario: El sistema notifica la finalización de la lectura, presenta el monto extraído (S/ 90.00) y Carlos autoriza la división en partes iguales.
-
-- Comportamiento del Sistema: Tras la recuperación exitosa del monto por parte del Worker (procesador en segundo plano), el motor matemático entra en acción. Al dividir el gasto, el sistema aplica un contrato de diseño (Design by Contract): evalúa la invariante estricta de que la sumatoria de las fracciones de deuda generadas (Angel: S/ 30, Gonzalo: S/ 30, Carlos: S/ 30) sea exactamente equivalente al monto total bruto, mitigando riesgos de fugas por redondeo de punto flotante.
+* Acción del Usuario: El sistema notifica la finalización de la lectura y presenta la información extraída del comprobante. Carlos verifica los datos y selecciona una modalidad de división: reparto equitativo o reparto por ítems.
+* Comportamiento del Sistema: Tras la recuperación exitosa de la información por parte del Worker (procesador en segundo plano), el motor matemático aplica la modalidad de división seleccionada. En el reparto equitativo, el monto total se distribuye entre los participantes. En el reparto por ítems, el sistema calcula la deuda de cada participante según los ítems que le hayan sido asignados. En ambos casos, se aplica un contrato de diseño (Design by Contract) que valida que la suma de las deudas generadas sea matemáticamente equivalente al monto total del comprobante antes de persistir los datos.
 
 #### Paso 4: Generación de Obligaciones (Matriz de Deuda)
 
-- Acción del Usuario: Angel y Gonzalo reciben la notificación de que mantienen un saldo pendiente de S/ 30.00 cada uno, a favor de Carlos.
-
-- Comportamiento del Sistema: Se instancian los registros transaccionales correspondientes en la base de datos, mapeando al deudor, al acreedor y el saldo vivo. Estos registros se convierten en el recurso crítico del sistema que estará sujeto a posibles actualizaciones simultáneas.
+* Acción del Usuario: Angel y Gonzalo reciben la notificación de que mantienen un saldo pendiente correspondiente a la división del gasto, a favor de Carlos.
+* Comportamiento del Sistema: Se instancian los registros transaccionales correspondientes en la base de datos, mapeando al deudor, al acreedor y el saldo vivo. Estos registros se convierten en el recurso crítico del sistema que estará sujeto a posibles actualizaciones simultáneas.
 
 #### Paso 5: Amortización y Control de Concurrencia (El núcleo transaccional)
 
-- Acción del Usuario: Angel y Gonzalo deciden registrar el pago de sus respectivas cuotas.
-
-- Comportamiento del Sistema: Al recibir una solicitud de amortización, el motor evalúa precondiciones críticas (ej. el pago debe ser mayor a cero y menor o igual al saldo actual). Si las reglas se cumplen, el sistema inicia una actualización de la matriz. Dado que ambas solicitudes pueden ingresar en el mismo milisegundo, el sistema encapsula la operación aplicando mecanismos de control de concurrencia y aislamiento transaccional a nivel de base de datos. Esto previene que una operación sobrescriba a la otra (condición de carrera), garantizando que el saldo acumulado a favor de Carlos se reduzca de forma estrictamente secuencial y segura.
+* Acción del Usuario: Angel y Gonzalo deciden registrar el pago de sus respectivas deudas.
+* Comportamiento del Sistema: Al recibir una solicitud de amortización, el motor evalúa precondiciones críticas (ej. el pago debe ser mayor a cero y menor o igual al saldo actual). Si las reglas se cumplen, el sistema inicia una actualización de la matriz. Dado que ambas solicitudes pueden ingresar de manera simultánea, el sistema encapsula la operación aplicando mecanismos de control de concurrencia y aislamiento transaccional a nivel de base de datos. Esto previene que una operación sobrescriba a la otra (condición de carrera), garantizando que las actualizaciones de los saldos pendientes se realicen de forma segura.
 
 #### Paso 6: Consolidación y Cierre
 
-- Acción del Usuario: Carlos verifica el balance del Evento, el cual indica que las cuentas han sido saldadas en su totalidad.
-
-- Comportamiento del Sistema: Las consultas de agregación suman los saldos actualizados de la matriz de deuda, confirmando que el ciclo de vida del comprobante ha finalizado sin corrupciones ni inconsistencias en la base de datos.
+* Acción del Usuario: Carlos verifica el balance del Evento, el cual indica que las cuentas han sido saldadas en su totalidad.
+* Comportamiento del Sistema: Las consultas de agregación suman los saldos actualizados de la matriz de deuda, confirmando que el ciclo de vida del comprobante ha finalizado sin corrupciones ni inconsistencias en la base de datos.
 
 ### 2.5. Requisitos Funcionales (v1.0)
 
