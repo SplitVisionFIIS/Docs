@@ -134,13 +134,13 @@ Derivado del flujo de negocio core, el prototipo funcional a presentar en la pri
 
 #### RF3: Procesamiento Asíncrono de Extracción (Resiliencia)
 
-- Descripción: El sistema debe permitir la recepción de imágenes de comprobantes, delegando la extracción del monto a un servicio externo (OCR) y notificando al cliente sobre el estado del proceso.
+- Descripción: El sistema debe permitir la recepción de imágenes de comprobantes, delegando la extracción de la información relevante del comprobante, incluyendo el monto total y los ítems cuando estén disponibles a un servicio externo (OCR) y notificando al cliente sobre el estado del proceso.
 
 - Criterio de Aceptación Técnico (SW707): El procesamiento debe ejecutarse obligatoriamente en segundo plano. Si la integración externa experimenta latencia o falla (timeout), el sistema principal no debe bloquearse, implementando un mecanismo de tolerancia a fallas que encole o reintente la operación.
 
 #### RF4: Motor de Fraccionamiento y Generación de Deuda (Contratos)
 
-- Descripción: A partir de un monto bruto extraído y confirmado, el sistema debe calcular la fracción correspondiente a cada participante y generar la matriz de obligaciones cruzadas.
+- Descripción: A partir del monto total confirmado del comprobante, el sistema calcula las deudas de los participantes según la modalidad de reparto seleccionada: reparto equitativo o reparto por ítems. En el reparto equitativo, el monto se divide entre los participantes; en el reparto por ítems, la deuda de cada participante se determina según los ítems que tenga asignados.
 
 - Criterio de Aceptación Técnico (SW707): El algoritmo de división debe implementar programación por contratos (Design by Contract). Se debe evaluar la invariante de que la suma de las deudas fraccionadas generadas sea matemáticamente equivalente al monto bruto original antes de persistir los datos en el motor relacional.
 
