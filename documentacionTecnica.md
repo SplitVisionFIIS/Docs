@@ -387,6 +387,23 @@ El modelo de datos representa las principales entidades del dominio de SplitVisi
 
 ## 4. Dependencias y reúso
 
+### 4.1 Gestión de dependencias - 02/10/2026
+
+#### Dependencias directas
+
+El proyecto utiliza **npm Workspaces** para gestionar las dependencias de `server`, `web` y `shared`. Las dependencias directas están declaradas explícitamente en sus respectivos archivos `package.json`.
+
+- **Server:** Express, Prisma, `pg-boss`, JWT, bcryptjs, Multer, Tesseract.js, Zod, Pino, Vitest y Supertest.
+- **Web:** React, React DOM, React Router, TanStack React Query, Vite y Tailwind CSS.
+- **Shared:** Zod y TypeScript para compartir esquemas entre frontend y backend.
+- **Raíz:** `concurrently`, utilizado para ejecutar simultáneamente la API, worker y frontend.
+
+### Dependencias transitivas y riesgos
+
+Durante la auditoría se identificó una cantidad razonable de vulnerabilidades para el estado actual del proyecto y su carácter de demostración. Algunas de ellas no afectan directamente la disponibilidad del sistema, como el agotamiento de pila asociado a la dependencia deepmerge-ts, ya que no corresponde al flujo normal de atención de peticiones ni al acceso de la aplicación a PostgreSQL.
+
+ > **Estado:** Estas vulnerabilidades corresponden al árbol de dependencias obtenido el **02/10/2026**. Al encontrarse el proyecto en desarrollo, su cantidad y severidad pueden cambiar conforme se actualicen las dependencias o se publiquen nuevos parches de seguridad.
+
 ## 5. Problemas de runtime
 
 ## 6. Contratos y programación defensiva
