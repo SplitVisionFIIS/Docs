@@ -398,7 +398,7 @@ El proyecto utiliza **npm Workspaces** para gestionar las dependencias de `serve
 - **Shared:** Zod y TypeScript para compartir esquemas entre frontend y backend.
 - **Raíz:** `concurrently`, utilizado para ejecutar simultáneamente la API, worker y frontend.
 
-### Dependencias transitivas y riesgos
+#### Dependencias transitivas y riesgos
 
 Durante la auditoría se identificó una cantidad razonable de vulnerabilidades para el estado actual del proyecto y su carácter de demostración. Algunas de ellas no afectan directamente la disponibilidad del sistema, como el agotamiento de pila asociado a la dependencia deepmerge-ts, ya que no corresponde al flujo normal de atención de peticiones ni al acceso de la aplicación a PostgreSQL.
 
