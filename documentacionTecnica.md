@@ -272,6 +272,114 @@ Derivado del flujo de negocio core, el prototipo funcional a presentar en la pri
 
 ## 3. Arquitectura y decisiones técnicas
 
+### 3.1. Vista general de la arquitectura
+
+SplitVision utiliza una arquitectura de monolito modular, compuesta por una aplicación web SPA desarrollada en React y un backend dividido en dos procesos: API y Worker. Ambos comparten el código del sistema y una base de datos PostgreSQL.
+
+La API atiende las solicitudes de la aplicación y gestiona las operaciones principales del sistema. El Worker ejecuta tareas que pueden procesarse de manera asíncrona, principalmente el procesamiento OCR de los comprobantes.
+
+De esta manera, el sistema mantiene una estructura centralizada para las operaciones transaccionales, mientras que las tareas de procesamiento intensivo se ejecutan independientemente del flujo principal de las solicitudes.
+
+### 3.2 C4 Nivel 1 – Diagrama de contexto
+
+El diagrama de contexto muestra a SplitVision como el sistema principal y su relación con los actores y sistemas externos. El Usuario del grupo interactúa con SplitVision para registrar gastos, verificar la información de los comprobantes y gestionar el pago de sus deudas. Asimismo, se representa un Servicio OCR en la nube como integración externa planificada para una versión futura, destinado al procesamiento remoto de las imágenes de los comprobantes.
+
+![Diagrama de contexto](assets/c4/Contexto.png)
+
+### 3.3 C4 Nivel 2 – Diagrama de contenedores
+
+El sistema SplitVision está compuesto por cuatro contenedores principales: SPA Web, Proceso API, Proceso Worker, PostgreSQL 16 y Almacenamiento de imágenes. La SPA Web proporciona la interfaz para el usuario y consume la API REST. El Proceso API gestiona las solicitudes, validaciones y reglas de negocio, además de registrar los comprobantes y encolar los trabajos de OCR. El Proceso Worker procesa estos trabajos de manera asíncrona y actualiza sus resultados en PostgreSQL. Las imágenes de los comprobantes se almacenan en el sistema de archivos local.
+
+![Diagrama de contenedores](assets/c4/Contenedores.png)
+
+
+### 3.4 C4 Nivel 3 – Diagrama de componentes
+
+El Proceso API se organiza en componentes orientados a las principales responsabilidades del dominio. Autenticación gestiona el registro, inicio de sesión y autenticación mediante JWT; Eventos administra la creación de eventos, participantes y control de acceso; Comprobantes gestiona la recepción, registro, procesamiento y confirmación de comprobantes; el Motor de división calcula la participación correspondiente a cada integrante; y Deudas y pagos gestiona la generación de deudas, registro de pagos y consulta de balances.
+
+![Diagrama de componentes1](assets/c4/Componentes_API.png)
+
+El Proceso Worker se encarga del procesamiento asíncrono de los comprobantes. El Procesador de comprobantes coordina la extracción OCR y la actualización del estado del comprobante. Para desacoplar esta lógica de la implementación concreta de OCR se utiliza OcrProvider, mediante el patrón Adapter. Actualmente se contemplan TesseractOcrProvider y MockOcrProvider, mientras que CloudOcrProvider representa una integración futura con un servicio OCR remoto.
+
+![Diagrama de componentes2](assets/c4/Componentes_Worker.png)
+
+### 3.5. Tecnologías utilizadas
+
+El sistema SplitVision utiliza el siguiente stack tecnológico:
+
+#### 3.5.1. Frontend (`/web`)
+
+| Tecnología       | Propósito                                |
+| ---------------- | ---------------------------------------- |
+| React            | Construcción de la interfaz de usuario   |
+| TypeScript       | Desarrollo con tipado estático           |
+| Vite             | Herramienta de construcción y desarrollo |
+| React Router DOM | Gestión de rutas                         |
+| TanStack Query   | Gestión de datos y consumo de la API     |
+| Tailwind CSS     | Estilos de la interfaz                   |
+
+#### 3.5.2. Backend (`/server`)
+
+| Tecnología   | Propósito                                         |
+| ------------ | ------------------------------------------------- |
+| Node.js      | Runtime del backend                               |
+| Express.js   | Implementación de la API HTTP                     |
+| Prisma ORM   | Acceso a la base de datos                         |
+| PostgreSQL   | Base de datos principal                           |
+| pg-boss      | Gestión de tareas en segundo plano mediante colas |
+| Tesseract.js | Procesamiento OCR de comprobantes                 |
+| JWT          | Autenticación mediante tokens                     |
+| bcryptjs     | Protección de contraseñas                         |
+| Multer       | Gestión de archivos subidos                       |
+
+#### 3.5.3. Capa compartida (`/shared`)
+
+| Tecnología | Propósito                                        |
+| ---------- | ------------------------------------------------ |
+| TypeScript | Lenguaje compartido entre las partes del sistema |
+| Zod        | Validación de datos y DTOs                       |
+
+#### 3.5.4. Infraestructura
+
+| Tecnología     | Propósito                           |
+| -------------- | ----------------------------------- |
+| Docker         | Contenerización                     |
+| Docker Compose | Gestión de servicios contenerizados |
+| NPM Workspaces | Gestión del monorepo                |
+
+### 3.6 Decisiones técnicas
+
+Las principales decisiones técnicas adoptadas para el desarrollo de SplitVision son:
+
+#### 3.6.1 Arquitectura monolítica modular
+
+Se optó por una arquitectura monolítica modular para mantener centralizadas las reglas de negocio y facilitar el desarrollo del prototipo, evitando la complejidad adicional de una arquitectura distribuida.
+
+#### 3.6.2 Procesamiento OCR mediante un Worker
+
+El procesamiento de comprobantes se separó de la API mediante un Worker y una cola de trabajos. Esto permite realizar el OCR de forma asíncrona, evitando bloquear las solicitudes del usuario y aislando posibles fallos o demoras del procesamiento.
+
+#### 3.6.3 PostgreSQL y pg-boss
+
+Se utiliza PostgreSQL como base de datos principal y pg-boss para gestionar los trabajos asíncronos. Esto permite mantener los datos del dominio y la cola de procesamiento dentro de una infraestructura persistente.
+
+#### 3.6.4 Control de concurrencia en pagos
+
+Los pagos se procesan mediante transacciones y bloqueo de registros para evitar actualizaciones perdidas cuando dos operaciones modifican simultáneamente una misma deuda. De esta forma se preservan las invariantes del saldo.
+
+#### 3.6.5 Patrón Adapter para el OCR
+
+Se definió una interfaz OcrProvider que desacopla el procesamiento de comprobantes de la implementación específica del OCR. Actualmente permite utilizar Tesseract.js y un proveedor Mock, dejando preparada la integración con un servicio OCR externo para una versión futura.
+
+#### 3.6.6 Validación y verificación del resultado OCR
+
+Los datos obtenidos mediante OCR se consideran información no confiable. Por ello, el resultado debe ser validado y verificado por el usuario antes de utilizarlo para generar las deudas correspondientes.
+
+#### 3.6.7 Separación entre frontend y API
+
+Se separó la interfaz web desarrollada en React de la lógica del backend mediante una API REST. Esto permite mantener responsabilidades diferenciadas entre la presentación, las reglas de negocio y el acceso a datos.
+
+
 ## 4. Dependencias y reúso
 
 ## 5. Problemas de runtime
