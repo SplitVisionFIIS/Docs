@@ -379,6 +379,11 @@ Los datos obtenidos mediante OCR se consideran información no confiable. Por el
 
 Se separó la interfaz web desarrollada en React de la lógica del backend mediante una API REST. Esto permite mantener responsabilidades diferenciadas entre la presentación, las reglas de negocio y el acceso a datos.
 
+### 3.7 Modelo de datos
+
+El modelo de datos representa las principales entidades del dominio de SplitVision y sus relaciones, incluyendo usuarios, eventos, comprobantes, ítems, consumos, deudas y pagos. Este modelo permite mantener la trazabilidad desde el registro de un comprobante y sus consumos hasta la generación y amortización de las deudas.
+
+![Entidad Relación](assets/modelo-datos/relacion.png)
 
 ## 4. Dependencias y reúso
 
