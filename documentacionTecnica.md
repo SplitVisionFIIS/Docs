@@ -25,7 +25,7 @@ Para automatizar este proceso, el sistema enfrenta tres retos de construcción q
 #### A. Condiciones de carrera y concurrencia en el ciclo de vida de pagos
 
 El sistema modela las obligaciones financieras mediante una matriz de deudas donde cada registro mantiene montos desagregados (`Monto_Total`, `Saldo_Confirmado` y `Saldo_Reservado`), de los cuales se deriva el saldo disponible para amortización:
-$$\text{Saldo\_Disponible} = \text{Monto\_Total} - (\text{Saldo\_Confirmado} + \text{Saldo\_Reservado})$$
+$$\mathrm{Saldo\_Disponible} = \mathrm{Monto\_Total} - (\mathrm{Saldo\_Confirmado} + \mathrm{Saldo\_Reservado})$$
 
 Este recurso crítico está expuesto a condiciones de carrera por dos escenarios cotidianos y altamente probables en la operación del sistema:
 
@@ -59,7 +59,7 @@ Asimismo, los lenguajes de programación modernos representan los números fracc
 Para garantizar la integridad matemática, SplitVision aplica:
 1. **Representación entera exacta en centavos:** Ningún cálculo financiero utiliza punto flotante. Todos los montos se modelan y almacenan como enteros en céntimos (`amount_cents`), eliminando de raíz el error de precisión binaria.
 2. **Invariante de conservación de masa (*Design by Contract*):** El motor de división implementa un contrato matemático estricto donde la suma de las partes asignadas debe ser idéntica al total del comprobante:
-$$\sum_{i=1}^{n} \text{parte}_i \equiv \text{total\_comprobante}$$
+$$\sum_{i=1}^{n} \mathrm{parte}_i \equiv \mathrm{total\_comprobante}$$
 3. **Algoritmo determinista de asignación de residuos:** Los centavos indivisibles no se descartan ni se crean de la nada; se asignan de manera predecible a los participantes siguiendo un orden determinista de desempate (*tie-break*). Esta invariante es verificada automáticamente mediante pruebas basadas en propiedades (*Property-Based Testing* con `fast-check`) sobre miles de combinaciones aleatorias.
 
 #### D. Relación entre los retos y las técnicas del curso
@@ -165,11 +165,11 @@ La siguiente tabla resume las entidades del dominio implementadas en el sistema:
 Las reglas que el sistema garantiza estrictamente en todo momento (**invariantes del dominio**) son:
 
 1. **Invariante de no sobregiro ni saldo negativo:** En cualquier instante, la suma del saldo confirmado y el saldo reservado nunca puede superar el monto total de la deuda:
-$$0 \le \text{confirmed\_cents} + \text{reserved\_cents} \le \text{amount\_cents}$$
+$$0 \le \mathrm{confirmed\_cents} + \mathrm{reserved\_cents} \le \mathrm{amount\_cents}$$
 2. **Invariante de saldo disponible:** El saldo disponible para nuevos pagos se calcula de forma unívoca y determinista:
-$$\text{available\_cents} = \text{amount\_cents} - (\text{confirmed\_cents} + \text{reserved\_cents})$$
+$$\mathrm{available\_cents} = \mathrm{amount\_cents} - (\mathrm{confirmed\_cents} + \mathrm{reserved\_cents})$$
 3. **Invariante de conservación de masa monetaria:** La suma de las deudas generadas más la cuota asumida por el propio pagador es idéntica al monto total del comprobante verificado:
-$$\sum_{i=1}^{k} \text{deuda}_i + \text{cuota\_pagador} \equiv \text{total\_comprobante}$$
+$$\sum_{i=1}^{k} \mathrm{deuda}_i + \mathrm{cuota\_pagador} \equiv \mathrm{total\_comprobante}$$
 
 ### 2.3. Flujo de Negocio
 
@@ -601,14 +601,14 @@ Controla la creación de un nuevo pago y su impacto en la deuda que mantiene el 
   3. Si el método es digital (Yape/Plin/Transferencia), la imagen de la evidencia es obligatoria (`hasEvidence === true`).
   4. El deudor debe ser el usuario autenticado que realiza la solicitud (`debt.debtor_id === userId`).
   5. El monto a pagar no puede superar el saldo disponible de la deuda:
-     $$\text{amountCents} \le \text{amount\_cents} - (\text{confirmed\_cents} + \text{reserved\_cents})$$
+     $$\mathrm{amountCents} \le \mathrm{amount\_cents} - (\mathrm{confirmed\_cents} + \mathrm{reserved\_cents})$$
 - **Postcondiciones:**
   1. Se inserta un registro en la tabla `payments` en estado `PENDIENTE` vinculado a la llave de idempotencia.
   2. El saldo reservado de la deuda se incrementa exactamente en el monto pagado (`reserved_cents += amountCents`).
   3. Se registra una entrada inmutable en la tabla de auditoría (`audit`).
 - **Invariante de Dominio:**
   En todo momento, la suma del dinero confirmado y el dinero reservado en trámite nunca puede exceder el monto total adeudado ni ser negativa:
-  $$0 \le \text{confirmed\_cents} + \text{reserved\_cents} \le \text{amount\_cents}$$
+  $$0 \le \mathrm{confirmed\_cents} + \mathrm{reserved\_cents} \le \mathrm{amount\_cents}$$
 
 ---
 
