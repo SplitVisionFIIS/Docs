@@ -292,23 +292,15 @@ De esta manera, el sistema mantiene una estructura centralizada para las operaci
 
 ### 3.2 C4 Nivel 1 – Diagrama de contexto
 
-El diagrama de contexto muestra a SplitVision como el sistema principal y su relación con los actores y sistemas externos. El Usuario del grupo interactúa con SplitVision para registrar gastos, verificar la información de los comprobantes y gestionar el pago de sus deudas. Asimismo, se representa un Servicio OCR en la nube como integración externa planificada para una versión futura, destinado al procesamiento remoto de las imágenes de los comprobantes.
-
 ![Diagrama de contexto](assets/c4/Contexto.png)
 
 ### 3.3 C4 Nivel 2 – Diagrama de contenedores
-
-El sistema SplitVision está compuesto por cuatro contenedores principales: SPA Web, Proceso API, Proceso Worker, PostgreSQL 16 y Almacenamiento de imágenes. La SPA Web proporciona la interfaz para el usuario y consume la API REST. El Proceso API gestiona las solicitudes, validaciones y reglas de negocio, además de registrar los comprobantes y encolar los trabajos de OCR. El Proceso Worker procesa estos trabajos de manera asíncrona y actualiza sus resultados en PostgreSQL. Las imágenes de los comprobantes se almacenan en el sistema de archivos local.
 
 ![Diagrama de contenedores](assets/c4/Contenedores.png)
 
 ### 3.4 C4 Nivel 3 – Diagrama de componentes
 
-El Proceso API se organiza en componentes orientados a las principales responsabilidades del dominio. Autenticación gestiona el registro, inicio de sesión y autenticación mediante JWT; Eventos administra la creación de eventos, participantes y control de acceso; Comprobantes gestiona la recepción, registro, procesamiento y confirmación de comprobantes; el Motor de división calcula la participación correspondiente a cada integrante; y Deudas y pagos gestiona la generación de deudas, registro de pagos y consulta de balances.
-
 ![Diagrama de componentes1](assets/c4/Componentes_API.png)
-
-El Proceso Worker se encarga del procesamiento asíncrono de los comprobantes. El Procesador de comprobantes coordina la extracción OCR y la actualización del estado del comprobante. Para desacoplar esta lógica de la implementación concreta de OCR se utiliza OcrProvider, mediante el patrón Adapter. Actualmente se contemplan TesseractOcrProvider y MockOcrProvider, mientras que CloudOcrProvider representa una integración futura con un servicio OCR remoto.
 
 ![Diagrama de componentes2](assets/c4/Componentes_Worker.png)
 
