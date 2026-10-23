@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SplitVision · Presentación</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0e17;
+  --ink:#eef1f8;
+  --mut:#98a1b6;
+  --acc1:#7c5cff;
+  --acc2:#22d3a6;
+  --gold:#ffd37a;
+  --card:rgba(255,255,255,.045);
+  --card2:rgba(255,255,255,.07);
+  --line:rgba(255,255,255,.1);
+  --grad:linear-gradient(135deg,#7c5cff,#22d3a6);
+  --font-head:'Space Grotesk','Segoe UI',system-ui,sans-serif;
+  --font-body:'Inter','Segoe UI',system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:var(--font-body);
+  overflow:hidden;
+  user-select:none;-webkit-user-select:none;
+}
+::selection{background:rgba(124,92,255,.4)}
+
+#blobs{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(95px);opacity:.22}
+.blob.b1{width:46vw;height:46vw;background:#7c5cff;top:-14vw;left:-12vw;animation:drift 16s ease-in-out infinite alternate}
+.blob.b2{width:38vw;height:38vw;background:#22d3a6;bottom:-12vw;right:-10vw;animation:drift 19s ease-in-out infinite alternate-reverse}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(4vw,3vw) scale(1.12)}}
+
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--grad);z-index:60;transition:width .5s ease;border-radius:0 3px 3px 0}
+
+#deck{display:flex;height:100vh;height:100dvh;transition:transform .65s cubic-bezier(.77,0,.18,1);z-index:1;position:relative}
+.slide{
+  flex:0 0 100vw;min-width:100vw;height:100%;position:relative;
+  display:flex;align-items:center;justify-content:center;
+  overflow-y:auto;overflow-x:hidden;
+  visibility:hidden;transition:visibility 0s .65s;
+}
+.slide.active{visibility:visible;transition:visibility 0s 0s}
+.wrap{width:min(1180px,92vw);margin:auto;padding:70px 0 120px;position:relative;z-index:2}
+.center{text-align:center}
+
+.slide [data-r]{opacity:0}
+.slide.active [data-r]{animation:rise .7s var(--d,0s) both cubic-bezier(.2,.7,.2,1)}
+@keyframes rise{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
+@keyframes blink{50%{opacity:.25}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+@keyframes flashcard{0%{box-shadow:0 0 0 0 rgba(34,211,166,0)}35%{box-shadow:0 0 0 5px rgba(34,211,166,.35)}100%{box-shadow:0 0 0 0 rgba(34,211,166,0)}}
+
+.kicker{
+  display:inline-block;font-size:.78rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+  padding:7px 16px;border-radius:999px;border:1px solid rgba(124,92,255,.45);
+  background:rgba(124,92,255,.12);color:#c9bcff;margin-bottom:22px;
+}
+.kicker.stepk{border-color:rgba(34,211,166,.45);background:rgba(34,211,166,.1);color:#9df0d8}
+h2{font-family:var(--font-head);font-size:clamp(1.9rem,4.2vw,3.1rem);line-height:1.12;letter-spacing:-.02em;margin-bottom:18px}
+.lead{font-size:clamp(1rem,1.55vw,1.22rem);color:var(--mut);line-height:1.55;margin-bottom:14px;max-width:56ch}
+.lead b{color:var(--ink);font-weight:600}
+.mut{color:var(--mut)}
+.points{list-style:none;margin:20px 0 8px;display:grid;gap:12px}
+.points li{padding-left:30px;position:relative;color:var(--mut);font-size:clamp(.98rem,1.5vw,1.15rem);line-height:1.5}
+.points li::before{content:'—';position:absolute;left:0;color:var(--acc2);font-weight:700}
+.points li b{color:var(--ink)}
+.big-q{font-family:var(--font-head);font-size:clamp(1.25rem,2.4vw,1.8rem);color:var(--gold);margin-top:26px}
+
+.grid2{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:26px;backdrop-filter:blur(9px)}
+.btn{
+  font-family:var(--font-body);font-weight:600;font-size:.95rem;color:#081018;
+  background:var(--grad);border:none;border-radius:14px;padding:13px 26px;cursor:pointer;
+  transition:transform .18s,box-shadow .18s,filter .18s;display:inline-flex;align-items:center;gap:8px;
+}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(124,92,255,.35)}
+.btn:disabled{cursor:default;filter:saturate(.7) brightness(.9);transform:none}
+.btn.small{padding:9px 18px;font-size:.85rem;border-radius:11px}
+.btn.wide{width:100%;justify-content:center}
+.mini-btn{
+  background:rgba(124,92,255,.14);color:#c9bcff;border:1px solid rgba(124,92,255,.4);
+  border-radius:10px;padding:9px 16px;font-weight:600;font-size:.85rem;cursor:pointer;
+  opacity:0;pointer-events:none;transition:opacity .3s;
+}
+.mini-btn.show{opacity:1;pointer-events:auto}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:.78rem;font-weight:600;
+  padding:5px 13px;border-radius:999px;border:1px solid var(--line);background:var(--card2);color:var(--mut);
+}
+.chip.ok{border-color:rgba(34,211,166,.5);background:rgba(34,211,166,.12);color:#8defc8}
+.chip.wait{border-color:rgba(255,211,122,.45);background:rgba(255,211,122,.1);color:var(--gold)}
+
+#bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;align-items:center;gap:18px;
+  padding:14px 24px;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(11,14,23,.85) 55%);
+}
+#counter{font-family:var(--font-head);font-size:.85rem;color:var(--mut);letter-spacing:.08em}
+#dots{flex:1;display:flex;justify-content:center;gap:9px;flex-wrap:wrap}
+.dot{pointer-events:auto;width:9px;height:9px;border-radius:99px;border:none;background:rgba(255,255,255,.22);cursor:pointer;transition:all .3s;padding:0}
+.dot:hover{background:rgba(255,255,255,.45)}
+.dot.on{width:26px;background:var(--grad)}
+.navbtn,#fsbtn{
+  pointer-events:auto;background:var(--card2);border:1px solid var(--line);color:var(--ink);
+  width:40px;height:40px;border-radius:12px;font-size:1.15rem;cursor:pointer;
+  display:grid;place-items:center;transition:all .2s;
+}
+.navbtn:hover,#fsbtn:hover{background:rgba(124,92,255,.25);border-color:rgba(124,92,255,.5)}
+.navbtn:active{transform:scale(.93)}
+
+.s-cover .wrap{padding-bottom:90px}
+.logo{font-family:var(--font-head);font-size:clamp(3.4rem,10vw,7.2rem);letter-spacing:-.03em;line-height:1.02;margin:10px 0 22px}
+.logo span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cover-lead{font-size:clamp(1.1rem,2.3vw,1.6rem);color:var(--mut);max-width:58ch;margin:0 auto 34px}
+.cover-lead b{color:var(--ink);font-weight:600}
+.team{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+.team span{
+  padding:9px 20px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+  font-size:.92rem;font-weight:600;color:var(--ink);
+}
+.hint{margin-top:44px;color:var(--mut);font-size:.85rem;opacity:.75;animation:blink 4s ease-in-out infinite}
+
+.chat{display:grid;gap:12px;max-width:420px}
+.msg{display:flex;gap:10px;align-items:flex-start}
+.msg .b{
+  background:var(--card);border:1px solid var(--line);border-radius:16px;border-top-left-radius:4px;
+  padding:11px 16px;font-size:.92rem;line-height:1.45;max-width:78%;
+}
+.msg.me{flex-direction:row-reverse}
+.msg.me .b{border-radius:16px;border-top-right-radius:4px;background:rgba(124,92,255,.16);border-color:rgba(124,92,255,.35)}
+.msg .who{font-size:.68rem;color:var(--mut);margin-bottom:3px;font-weight:700;letter-spacing:.06em}
+.typing{display:inline-flex;gap:5px;padding:14px 16px}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--mut);animation:blink 1.1s infinite}
+.typing i:nth-child(2){animation-delay:.18s}
+.typing i:nth-child(3){animation-delay:.36s}
+
+.statement{
+  font-family:var(--font-head);font-size:clamp(1.6rem,3.6vw,2.7rem);line-height:1.3;letter-spacing:-.015em;
+  max-width:22ch;margin:0 auto 48px;
+}
+.statement b{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.idea3{display:flex;justify-content:center;gap:22px;flex-wrap:wrap;align-items:stretch}
+.icard{
+  background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px 22px;
+  width:min(220px,28vw);display:grid;gap:6px;justify-items:center;transition:transform .25s,border-color .25s;
+}
+.icard:hover{transform:translateY(-6px);border-color:rgba(34,211,166,.45)}
+.icard .ie{font-size:2.1rem}
+.icard b{font-family:var(--font-head);font-size:1.06rem}
+.icard span{color:var(--mut);font-size:.88rem}
+
+.steps{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:34px 0 26px;position:relative}
+.step{
+  pointer-events:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:16px 14px;width:min(160px,29vw);cursor:pointer;text-align:left;
+  display:grid;gap:8px;transition:all .22s;color:var(--ink);font-family:var(--font-body);
+}
+.step:hover{transform:translateY(-4px);border-color:rgba(124,92,255,.5)}
+.step.on{border-color:rgba(34,211,166,.6);background:rgba(34,211,166,.09)}
+.step .sn{
+  width:28px;height:28px;border-radius:9px;background:rgba(124,92,255,.2);border:1px solid rgba(124,92,255,.45);
+  display:grid;place-items:center;font-weight:700;font-size:.85rem;color:#c9bcff;font-family:var(--font-head);
+}
+.step.on .sn{background:var(--grad);color:#081018;border-color:transparent}
+.step .se{font-size:1.35rem}
+.step b{font-size:.9rem;font-weight:600;line-height:1.25}
+.stepinfo{max-width:620px;margin:0 auto;display:grid;gap:14px;justify-items:center;padding:20px 28px}
+#steptext{color:var(--mut);font-size:1rem;line-height:1.5;min-height:1.5em}
+
+.av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:.95rem;color:#0b0e17;flex:0 0 auto}
+.av-s{width:30px;height:30px;font-size:.75rem}
+.av-m{background:linear-gradient(135deg,#a78bfa,#7c5cff)}
+.av-l{background:linear-gradient(135deg,#f9a8d4,#ec4899)}
+.av-a{background:linear-gradient(135deg,#fcd34d,#f59e0b)}
+
+.eventcard{max-width:400px;margin:0 auto;display:grid;gap:18px}
+.ev-head{display:flex;align-items:center;gap:14px}
+.ev-head .efe{width:52px;height:52px;border-radius:15px;background:rgba(124,92,255,.16);border:1px solid rgba(124,92,255,.4);display:grid;place-items:center;font-size:1.5rem}
+.ev-head b{font-family:var(--font-head);font-size:1.15rem;display:block}
+.ev-head span{color:var(--mut);font-size:.82rem}
+.avs{display:flex;align-items:center;gap:0;padding:14px;border-radius:16px;background:var(--card2);border:1px dashed var(--line)}
+.avs .av{border:3px solid #151a29;margin-left:-10px}
+.avs .av:first-child{margin-left:0}
+.avs .n{margin-left:14px;color:var(--mut);font-size:.88rem}
+.inv{display:flex;align-items:center;gap:12px;background:var(--card2);border-radius:14px;padding:12px 16px;border:1px solid var(--line)}
+.inv .txt{flex:1;font-size:.9rem}
+.inv .txt span{display:block;color:var(--mut);font-size:.78rem}
+
+.phone{
+  width:min(240px,60vw);aspect-ratio:9/18;border-radius:38px;border:7px solid #1b2132;
+  background:#0d1220;padding:14px;margin:0 auto;box-shadow:0 30px 60px rgba(0,0,0,.5);
+  position:relative;animation:floaty 6s ease-in-out infinite;
+}
+.phone::before{content:'';position:absolute;top:14px;left:50%;transform:translateX(-50%);width:74px;height:16px;background:#1b2132;border-radius:9px}
+.pscreen{height:100%;border-radius:24px;background:linear-gradient(180deg,#121829,#0d1220);padding:40px 14px 16px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.pstatus{display:flex;align-items:center;gap:8px;font-size:.8rem;font-weight:600}
+.pstatus .dot{width:8px;height:8px;border-radius:50%;background:var(--acc2);box-shadow:0 0 10px var(--acc2)}
+.pimg{
+  border:2px dashed rgba(255,255,255,.22);border-radius:16px;padding:18px 12px;text-align:center;
+  display:grid;gap:6px;place-items:center;background:rgba(255,255,255,.03);
+}
+.pimg .fe{font-size:2rem}
+.pimg span{font-size:.72rem;color:var(--mut)}
+.pchips{display:grid;gap:8px;justify-items:start}
+.pchips .chip{animation:pop .5s both}
+
+.receipt{
+  position:relative;width:min(330px,80vw);background:#f7f4ec;color:#23262e;border-radius:8px 8px 0 0;
+  padding:24px 22px 18px;margin:0 auto;box-shadow:0 26px 50px rgba(0,0,0,.45);
+  font-family:'Courier New',monospace;
+}
+.rzig{position:absolute;left:0;right:0;bottom:-9px;height:9px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='9'%3E%3Cpath d='M0 0 L8 9 L16 0 Z' fill='%23f7f4ec'/%3E%3C/svg%3E") repeat-x;background-size:16px 9px}
+.rhead{text-align:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px dashed #d8d2c2}
+.rhead b{display:block;font-size:.95rem;letter-spacing:.05em}
+.rhead span{font-size:.72rem;color:#8b8574}
+.ritem{display:flex;justify-content:space-between;gap:10px;font-size:.85rem;padding:7px 0;opacity:0}
+.ritem .rq{flex:1}
+.ritem .rpr{font-weight:700}
+.rtotal{display:flex;justify-content:space-between;border-top:2px dashed #d8d2c2;margin-top:12px;padding-top:12px;font-size:1rem;font-weight:700;opacity:0}
+.scan{position:absolute;left:6px;right:6px;top:-4%;height:44px;border-radius:6px;opacity:0;
+  background:linear-gradient(180deg,transparent,rgba(124,92,255,.35) 45%,rgba(34,211,166,.65) 50%,rgba(124,92,255,.35) 55%,transparent);
+  box-shadow:0 0 22px rgba(34,211,166,.5);
+}
+.receipt.play .scan{opacity:1;animation:scanmove 1.8s ease-in-out forwards}
+@keyframes scanmove{0%{top:-6%}100%{top:103%}}
+.receipt.play .ritem:nth-of-type(1){animation:pop .45s .55s both}
+.receipt.play .ritem:nth-of-type(2){animation:pop .45s .85s both}
+.receipt.play .ritem:nth-of-type(3){animation:pop .45s 1.15s both}
+.receipt.play .rtotal{animation:pop .5s 1.5s both}
+.receipt.play .rhead{animation:pop .5s .15s both}
+.receipt.play{border-radius:8px}
+.rstatus{display:flex;justify-content:center;margin-top:26px}
+.rstatus .chip{opacity:0;transform:scale(.85);transition:all .45s cubic-bezier(.2,.7,.2,1)}
+.rstatus .chip.show{opacity:1;transform:scale(1)}
+.rtools{display:flex;justify-content:center;margin-top:16px}
+
+.seg{
+  display:inline-flex;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:5px;gap:5px;margin:6px 0 30px;
+}
+.seg button{
+  border:none;background:transparent;color:var(--mut);font-weight:600;font-size:.95rem;
+  padding:11px 24px;border-radius:10px;cursor:pointer;transition:all .22s;font-family:var(--font-body);
+}
+.seg button.on{background:var(--grad);color:#081018}
+.splitrow{display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-bottom:26px}
+.pcard{
+  background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px;
+  width:min(230px,29vw);display:grid;gap:14px;justify-items:center;transition:border-color .3s;
+}
+.pcard.flash{animation:flashcard .8s ease}
+.pcard .av{width:56px;height:56px;font-size:1.2rem}
+.pcard b.nm{font-family:var(--font-head);font-size:1.05rem}
+.pcard .cap{color:var(--mut);font-size:.82rem;text-align:center;min-height:2.4em;display:grid;place-items:center}
+.pamt{font-family:var(--font-head);font-size:1.6rem;color:var(--gold);font-variant-numeric:tabular-nums}
+.pamt small{font-size:.9rem;color:var(--mut);font-weight:400}
+.splitnote{color:var(--mut);font-size:.92rem;max-width:60ch;margin:0 auto}
+.splitnote b{color:var(--ink)}
+
+.paymock{max-width:380px;margin:0 auto;display:grid;gap:16px}
+.debtline{display:flex;align-items:center;gap:12px}
+.debtline .dt{flex:1}
+.debtline .dt b{display:block;font-family:var(--font-head);font-size:1.02rem}
+.debtline .dt span{color:var(--mut);font-size:.78rem}
+.damt{font-family:var(--font-head);font-size:1.35rem;color:var(--gold);font-variant-numeric:tabular-nums}
+.payqr{display:flex;align-items:center;gap:16px;background:var(--card2);border:1px solid var(--line);border-radius:16px;padding:14px}
+.qr{width:92px;height:92px;background:#fff;border-radius:8px;padding:7px;display:grid;grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(9,1fr);gap:1px}
+.qr i{background:#fff;border-radius:1px}
+.qr i.on{background:#14161c}
+.payqr .pm{display:grid;gap:8px}
+.payqr .pm .pmt{font-size:.78rem;color:var(--mut)}
+.mchips{display:flex;gap:8px}
+.mchip{font-size:.75rem;font-weight:700;padding:6px 13px;border-radius:9px}
+.mchip.yape{background:linear-gradient(135deg,#40e0a8,#20bd7e);color:#06281c}
+.mchip.plin{background:linear-gradient(135deg,#8ab4ff,#3d7bff);color:#0a1b3d}
+#payChip{justify-self:center;opacity:0;transform:translateY(6px);transition:all .4s}
+#payChip.show{opacity:1;transform:none}
+
+.paycards{display:flex;justify-content:center;gap:22px;flex-wrap:wrap;margin:14px 0 30px}
+.paycard{width:min(300px,44vw);display:grid;gap:16px;text-align:left}
+.paycard.done{border-color:rgba(34,211,166,.55);background:rgba(34,211,166,.06)}
+.pc-head{display:flex;align-items:center;gap:12px}
+.pc-head .dt{flex:1}
+.pc-head .dt b{display:block;font-family:var(--font-head)}
+.pc-head .dt span{color:var(--mut);font-size:.8rem}
+.voucher{
+  display:flex;align-items:center;gap:12px;background:var(--card2);border:1px dashed var(--line);
+  border-radius:14px;padding:12px 14px;
+}
+.voucher .vicon{font-size:1.4rem}
+.voucher .vfile{flex:1;font-size:.78rem;color:var(--mut);word-break:break-all}
+.voucher .vamt{font-family:var(--font-head);color:var(--gold);font-size:.95rem}
+.balance{max-width:640px;margin:0 auto;display:grid;gap:12px}
+.bal-line{display:flex;justify-content:space-between;color:var(--mut);font-size:.9rem}
+.bal-line b{color:var(--ink);font-variant-numeric:tabular-nums}
+.bar{height:12px;border-radius:99px;background:var(--card2);border:1px solid var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--grad);border-radius:99px;transition:width .6s ease}
+.alldone{
+  text-align:center;font-family:var(--font-head);font-size:1.2rem;color:#8defc8;
+  opacity:0;transform:scale(.86);transition:all .5s cubic-bezier(.2,.7,.2,1);
+}
+.alldone.show{opacity:1;transform:scale(1)}
+
+.featgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:10px auto 22px;max-width:1080px}
+.feat{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;text-align:left;display:grid;gap:8px;transition:transform .25s,border-color .25s}
+.feat:hover{transform:translateY(-5px);border-color:rgba(124,92,255,.5)}
+.feat .fe{font-size:1.6rem}
+.feat b{font-family:var(--font-head);font-size:1rem}
+.feat span{color:var(--mut);font-size:.85rem;line-height:1.45}
+.centsdemo{max-width:760px;margin:0 auto;text-align:left;padding:24px 28px}
+.cents-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.cents-head b{font-family:var(--font-head);font-size:1.1rem;display:block}
+.cents-head .cs{color:var(--mut);font-size:.9rem}
+.cents-rows{display:grid;gap:10px;margin-top:18px}
+.crow{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 18px;border-radius:14px;
+  background:var(--card2);border:1px solid var(--line);
+  opacity:0;transform:translateY(12px);transition:all .5s cubic-bezier(.2,.7,.2,1);
+}
+.centsdemo.show .crow{opacity:1;transform:none}
+.centsdemo.show .crow:nth-child(2){transition-delay:.25s}
+.tag{font-size:.75rem;font-weight:700;padding:5px 12px;border-radius:8px;background:rgba(255,255,255,.07);border:1px solid var(--line);white-space:nowrap}
+.math{font-variant-numeric:tabular-nums;font-size:.95rem;flex:1;min-width:200px}
+.math b{color:var(--gold)}
+.verdict{font-size:.78rem;font-weight:700}
+.verdict.bad{color:#ff9d9d}
+.verdict.ok{color:#8defc8}
+
+.arch{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;max-width:1080px;margin:0 auto}
+.abox{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 20px;display:grid;gap:8px;justify-items:center;text-align:center;transition:transform .25s,border-color .25s}
+.abox:hover{transform:translateY(-5px);border-color:rgba(34,211,166,.5)}
+.abox .ae{font-size:1.9rem}
+.abox b{font-family:var(--font-head);font-size:.98rem}
+.abox span{color:var(--mut);font-size:.82rem;line-height:1.45}
+.abox em{
+  font-style:normal;font-size:.7rem;font-weight:700;letter-spacing:.04em;color:#c9bcff;
+  background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.4);padding:4px 11px;border-radius:99px;margin-top:4px;
+}
+
+.final{max-width:430px;margin:0 auto;display:grid;gap:14px;padding:26px}
+.f-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.f-head b{font-family:var(--font-head);font-size:1.1rem}
+.f-row{display:flex;align-items:center;gap:12px;background:var(--card2);border-radius:12px;padding:10px 14px}
+.f-row .fnm{font-weight:600;font-size:.92rem}
+.f-row .spacer{flex:1}
+.f-row .fr{font-size:.85rem;color:var(--mut);font-variant-numeric:tabular-nums}
+.f-row .fr.ok{color:#8defc8;font-weight:700}
+.bigq{font-family:var(--font-head);font-size:clamp(2rem,5.5vw,3.6rem);background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;margin:0 auto 34px;letter-spacing:-.02em}
+
+@media (max-width:960px){
+  .grid2{grid-template-columns:1fr;gap:34px}
+  .grid2 .visual{order:2}
+  .featgrid{grid-template-columns:1fr 1fr}
+  .arch{grid-template-columns:1fr 1fr}
+  .lead{max-width:none}
+}
+@media (max-width:640px){
+  .featgrid{grid-template-columns:1fr}
+  .arch{grid-template-columns:1fr}
+  #dots{display:none}
+  .splitrow .pcard,.paycard{width:100%}
+  .step{width:calc(50% - 5px)}
+  .wrap{padding:56px 0 120px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<div id="blobs"><div class="blob b1"></div><div class="blob b2"></div></div>
+<div id="progress"></div>
+
+<div id="deck">
+
+  <section class="slide s-cover">
+    <div class="wrap center">
+      <span class="kicker" data-r style="--d:.1s">Construcción de Software II · Prototipo v1.0</span>
+      <h1 class="logo" data-r style="--d:.22s">Split<span>Vision</span></h1>
+      <p class="cover-lead" data-r style="--d:.38s">De la <b>foto de la boleta</b> al <b>saldo justo</b>: divide gastos del grupo sin calculadoras, sin errores y sin peleas.</p>
+      <div class="team" data-r style="--d:.55s">
+        <span>Gonzalo Albornoz</span><span>Luis Vargas</span><span>Farid Zamudio</span>
+      </div>
+      <p class="hint" data-r style="--d:.85s">← → para navegar · en móvil desliza · F pantalla completa</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap grid2">
+      <div>
+        <span class="kicker" data-r style="--d:.05s">El problema</span>
+        <h2 data-r style="--d:.15s">Dividir la cuenta a mano es un dolor de cabeza</h2>
+        <ul class="points">
+          <li data-r style="--d:.3s">Uno paga las entradas, otro el almuerzo, otro el taxi…</li>
+          <li data-r style="--d:.42s">Las cuentas se hacen <b>a mano</b>, en la calculadora o en el chat.</li>
+          <li data-r style="--d:.54s">Los totales nunca cuadran y <b>cobrar se vuelve incómodo</b>.</li>
+        </ul>
+        <p class="big-q" data-r style="--d:.7s">¿Quién le paga a quién… y cuánto?</p>
+      </div>
+      <div class="chat">
+        <div class="msg" data-r style="--d:.3s">
+          <span class="av av-l av-s">L</span>
+          <div class="b"><div class="who">Lucía</div>¿alguien anotó cuánto puse yo?</div>
+        </div>
+        <div class="msg" data-r style="--d:.5s">
+          <span class="av av-a av-s">A</span>
+          <div class="b"><div class="who">Andrés</div>yo pagué el taxi 😅 me deben 20</div>
+        </div>
+        <div class="msg me" data-r style="--d:.7s">
+          <span class="av av-m av-s">M</span>
+          <div class="b"><div class="who">Mateo</div>esperen, hago la cuenta…</div>
+        </div>
+        <div class="msg me" data-r style="--d:.9s">
+          <span class="av av-m av-s">M</span>
+          <div class="b"><div class="who">Mateo</div>creo que Lucía me debe 73.50… ¿o era 75?</div>
+        </div>
+        <div class="msg" data-r style="--d:1.1s">
+          <span class="av av-l av-s">L</span>
+          <div class="b typing"><i></i><i></i><i></i></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap center">
+      <span class="kicker" data-r style="--d:.05s">La idea en una frase</span>
+      <p class="statement" data-r style="--d:.2s">Sube la <b>foto de la boleta</b>, la app <b>la lee por ti</b>, divide el gasto y te dice <b>quién le paga a quién</b>.</p>
+      <div class="idea3">
+        <div class="icard" data-r style="--d:.45s">
+          <span class="ie">📸</span><b>Sube la foto</b><span>de la boleta del local</span>
+        </div>
+        <div class="icard" data-r style="--d:.62s">
+          <span class="ie">👀</span><b>La app la lee</b><span>y tú solo la revisas</span>
+        </div>
+        <div class="icard" data-r style="--d:.79s">
+          <span class="ie">💸</span><b>Cada uno paga</b><span>lo justo, al centavo</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap center">
+      <span class="kicker" data-r style="--d:.05s">El flujo</span>
+      <h2 data-r style="--d:.15s">El viaje de una boleta</h2>
+      <div class="steps" data-r style="--d:.3s" id="steps">
+        <button class="step on"><span class="sn">1</span><span class="se">🧑‍🤝‍🧑</span><b>Se arma el grupo</b></button>
+        <button class="step"><span class="sn">2</span><span class="se">📸</span><b>Se sube la boleta</b></button>
+        <button class="step"><span class="sn">3</span><span class="se">👀</span><b>La app la lee</b></button>
+        <button class="step"><span class="sn">4</span><span class="se">✂️</span><b>Se divide el gasto</b></button>
+        <button class="step"><span class="sn">5</span><span class="se">💸</span><b>Cada uno paga</b></button>
+        <button class="step"><span class="sn">6</span><span class="se">✅</span><b>Se confirma y listo</b></button>
+      </div>
+      <div class="stepinfo card" data-r style="--d:.45s">
+        <p id="steptext">Haz clic en un paso para verlo en detalle.</p>
+        <button class="mini-btn" id="stepgo">Ir a este paso →</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap grid2">
+      <div>
+        <span class="kicker stepk" data-r style="--d:.05s">Paso 1 de 6</span>
+        <h2 data-r style="--d:.15s">Se arma el grupo</h2>
+        <p class="lead" data-r style="--d:.3s">Mateo crea el evento <b>«Almuerzo Criollo»</b> e invita a Lucía y a Andrés buscándolos por su usuario.</p>
+        <p class="lead" data-r style="--d:.45s">Cada invitado acepta desde su bandeja. <b>Solo los integrantes</b> pueden ver y tocar los gastos del grupo.</p>
+      </div>
+      <div class="visual">
+        <div class="eventcard card" data-r style="--d:.4s">
+          <div class="ev-head">
+            <span class="efe">🍽️</span>
+            <div><b>Almuerzo Criollo</b><span>Evento · creado por Mateo</span></div>
+            <span class="chip ok">Activo</span>
+          </div>
+          <div class="avs">
+            <span class="av av-m">M</span><span class="av av-l">L</span><span class="av av-a">A</span>
+            <span class="n">3 integrantes</span>
+          </div>
+          <div class="inv" data-r style="--d:.8s">
+            <span class="av av-l av-s">L</span>
+            <span class="txt">Lucía aceptó tu invitación<span>hace 2 min</span></span>
+            <span class="chip ok">✓</span>
+          </div>
+          <div class="inv" data-r style="--d:1.05s">
+            <span class="av av-a av-s">A</span>
+            <span class="txt">Andrés aceptó tu invitación<span>hace 1 min</span></span>
+            <span class="chip ok">✓</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap grid2">
+      <div>
+        <span class="kicker stepk" data-r style="--d:.05s">Paso 2 de 6</span>
+        <h2 data-r style="--d:.15s">Alguien paga y sube la boleta</h2>
+        <p class="lead" data-r style="--d:.3s">Mateo paga los <b>S/ 300.00</b> de la cuenta y sube la foto de la boleta al grupo desde su celular.</p>
+        <p class="lead" data-r style="--d:.45s">La app revisa que sea una foto real (no un archivo disfrazado) y la manda a leer <b>en segundo plano</b>: nadie se queda esperando.</p>
+        <p class="lead" data-r style="--d:.6s"><span class="mut">La misma foto subida dos veces también se detecta.</span></p>
+      </div>
+      <div class="visual">
+        <div class="phone" data-r style="--d:.3s">
+          <div class="pscreen">
+            <div class="pstatus"><span class="dot"></span>Almuerzo Criollo</div>
+            <div class="pimg" data-r style="--d:.55s">
+              <span class="fe">🧾</span>
+              <span>boleta_criolla.jpg · 2.1 MB</span>
+            </div>
+            <div class="pchips">
+              <span class="chip ok" data-r style="--d:.9s">Foto recibida ✓</span>
+              <span class="chip wait" data-r style="--d:1.25s">En cola para lectura…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap grid2">
+      <div>
+        <span class="kicker stepk" data-r style="--d:.05s">Paso 3 de 6</span>
+        <h2 data-r style="--d:.15s">La app lee la boleta</h2>
+        <p class="lead" data-r style="--d:.3s">Un lector que trabaja <b>en segundo plano</b> reconoce los platos y el total a partir de la foto.</p>
+        <p class="lead" data-r style="--d:.45s">Pero <b>nunca confía a ciegas</b>: el resultado queda «a revisión» y Mateo corrige lo que haga falta antes de dividir.</p>
+        <div class="card" style="margin-top:22px;max-width:52ch" data-r style="--d:.6s">
+          <p class="lead" style="margin:0">💡 ¿Foto borrosa o ilegible? Se puede <b>reintentar la lectura</b> o escribir los montos a mano. El grupo nunca se queda atascado.</p>
+        </div>
+      </div>
+      <div class="visual">
+        <div class="receipt" id="receipt">
+          <div class="rhead"><b>LA CRIOLLA · BOLETA</b><span>Mesa 4 · 12:45 p. m.</span></div>
+          <div class="ritem"><span class="rq">Lomo saltado</span><span>×1</span><span class="rpr">S/ 120.00</span></div>
+          <div class="ritem"><span class="rq">Ají de gallina</span><span>×1</span><span class="rpr">S/ 100.00</span></div>
+          <div class="ritem"><span class="rq">Ceviche clásico</span><span>×1</span><span class="rpr">S/ 80.00</span></div>
+          <div class="rtotal"><span>TOTAL</span><span>S/ 300.00</span></div>
+          <div class="scan"></div>
+          <div class="rzig"></div>
+        </div>
+        <div class="rstatus">
+          <span class="chip ok" id="rstatus">Leído ✓ — listo para revisión humana</span>
+        </div>
+        <div class="rtools">
+          <button class="btn small" id="replayBtn">↺ Repetir lectura</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap center">
+      <span class="kicker stepk" data-r style="--d:.05s">Paso 4 de 6</span>
+      <h2 data-r style="--d:.15s">El gasto se divide</h2>
+      <div data-r style="--d:.25s">
+        <div class="seg" id="seg">
+          <button class="on" data-mode="even">Por igual</button>
+          <button data-mode="items">Por plato</button>
+        </div>
+      </div>
+      <div class="splitrow">
+        <div class="pcard" id="pM" data-r style="--d:.35s">
+          <span class="av av-m">M</span>
+          <b class="nm">Mateo</b>
+          <span class="cap">Su parte de la cuenta</span>
+          <span class="pamt"><small>S/ </small><span class="amt" data-v="10000">100.00</span></span>
+        </div>
+        <div class="pcard" id="pL" data-r style="--d:.5s">
+          <span class="av av-l">L</span>
+          <b class="nm">Lucía</b>
+          <span class="cap">Su parte de la cuenta</span>
+          <span class="pamt"><small>S/ </small><span class="amt" data-v="10000">100.00</span></span>
+        </div>
+        <div class="pcard" id="pA" data-r style="--d:.65s">
+          <span class="av av-a">A</span>
+          <b class="nm">Andrés</b>
+          <span class="cap">Su parte de la cuenta</span>
+          <span class="pamt"><small>S/ </small><span class="amt" data-v="10000">100.00</span></span>
+        </div>
+      </div>
+      <p class="splitnote" data-r style="--d:.8s"><b>La suma cuadra siempre al centavo</b> (S/ 300.00 exactos). Solo generan deuda las partes de quienes <b>no</b> pagaron la cuenta.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap grid2">
+      <div>
+        <span class="kicker stepk" data-r style="--d:.05s">Paso 5 de 6</span>
+        <h2 data-r style="--d:.15s">Cada uno paga lo que debe</h2>
+        <p class="lead" data-r style="--d:.3s">Lucía y Andrés ven su deuda y con qué datos les cobra Mateo: <b>Yape, Plin o su QR</b>, desde su perfil.</p>
+        <p class="lead" data-r style="--d:.45s">Le pagan por Yape y suben la <b>captura del voucher</b> como evidencia. Puede ser el monto total o un abono parcial.</p>
+        <p class="lead" data-r style="--d:.6s">El pago queda <b>«en revisión»</b> hasta que Mateo lo confirme. Nadie puede pagar dos veces lo mismo.</p>
+      </div>
+      <div class="visual">
+        <div class="paymock card" data-r style="--d:.35s">
+          <div class="debtline">
+            <span class="av av-l">L</span>
+            <div class="dt"><b>Le debes a Mateo</b><span>Almuerzo Criollo</span></div>
+            <span class="damt">S/ 100.00</span>
+          </div>
+          <div class="payqr">
+            <div class="qr" id="qr" aria-label="Código QR de cobro"></div>
+            <div class="pm">
+              <span class="pmt">Datos de cobro de Mateo</span>
+              <div class="mchips">
+                <span class="mchip yape">Yape</span>
+                <span class="mchip plin">Plin</span>
+              </div>
+            </div>
+          </div>
+          <button class="btn wide" id="payBtn">Ya pagué · subir voucher</button>
+          <span class="chip wait" id="payChip">Voucher recibido · en revisión ⏳</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap center">
+      <span class="kicker stepk" data-r style="--d:.05s">Paso 6 de 6</span>
+      <h2 data-r style="--d:.15s">El que pagó confirma… y listo</h2>
+      <p class="lead" data-r style="--d:.3s;margin:0 auto 26px">En su bandeja, Mateo ve los vouchers de Lucía y Andrés y los confirma. Pruébalo:</p>
+      <div class="paycards">
+        <div class="paycard card" data-r style="--d:.4s">
+          <div class="pc-head">
+            <span class="av av-l">L</span>
+            <div class="dt"><b>Lucía</b><span>te pagó por Yape</span></div>
+            <span class="chip wait">En revisión</span>
+          </div>
+          <div class="voucher">
+            <span class="vicon">🧾</span>
+            <span class="vfile">yape_lucia_oct.png</span>
+            <span class="vamt">S/ 100.00</span>
+          </div>
+          <button class="btn confirm">Confirmar</button>
+        </div>
+        <div class="paycard card" data-r style="--d:.55s">
+          <div class="pc-head">
+            <span class="av av-a">A</span>
+            <div class="dt"><b>Andrés</b><span>te pagó por Yape</span></div>
+            <span class="chip wait">En revisión</span>
+          </div>
+          <div class="voucher">
+            <span class="vicon">🧾</span>
+            <span class="vfile">yape_andres_oct.png</span>
+            <span class="vamt">S/ 100.00</span>
+          </div>
+          <button class="btn confirm">Confirmar</button>
+        </div>
+      </div>
+      <div class="balance" data-r style="--d:.7s">
+        <div class="bal-line"><span>Cobrado del grupo</span><b id="balTxt">S/ 0.00 de S/ 200.00</b></div>
+        <div class="bar"><i id="balBar"></i></div>
+        <div class="alldone" id="allDone">🎉 Cuentas al día — grupo liquidado</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap center">
+      <span class="kicker" data-r style="--d:.05s">El toque fino</span>
+      <h2 data-r style="--d:.15s">Detalles que la hacen confiable</h2>
+      <div class="featgrid">
+        <div class="feat" data-r style="--d:.3s">
+          <span class="fe">🤝</span>
+          <b>Deudas cruzadas</b>
+          <span>Si me debes S/ 50 y te debo S/ 30, solo se transfiere la diferencia: <b>S/ 20</b>. Se calcula solo.</span>
+        </div>
+        <div class="feat" data-r style="--d:.42s">
+          <span class="fe">⚡</span>
+          <b>Nadie se queda esperando</b>
+          <span>La lectura de boletas corre aparte: mientras una se analiza, todos siguen usando la app con normalidad.</span>
+        </div>
+        <div class="feat" data-r style="--d:.54s">
+          <span class="fe">🛡️</span>
+          <b>Nada se cobra dos veces</b>
+          <span>Doble clic, mala señal o dos pagos a la vez: el dinero solo se cuenta una vez y los saldos no se rompen.</span>
+        </div>
+      </div>
+      <div class="centsdemo card" id="centsDemo" data-r style="--d:.7s">
+        <div class="cents-head">
+          <div>
+            <b>🪙 Ni un centavo se pierde</b>
+            <span class="cs">Dividir S/ 100.00 entre 3 personas:</span>
+          </div>
+          <button class="btn small" id="centsBtn">Probar</button>
+        </div>
+        <div class="cents-rows">
+          <div class="crow">
+            <span class="tag">🧮 Calculadora</span>
+            <span class="math">33.33 + 33.33 + 33.33 = <b>S/ 99.99</b></span>
+            <span class="verdict bad">✗ se pierde S/ 0.01</span>
+          </div>
+          <div class="crow">
+            <span class="tag">✨ SplitVision</span>
+            <span class="math">33.34 + 33.33 + 33.33 = <b>S/ 100.00</b></span>
+            <span class="verdict ok">✓ exacto</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap center">
+      <span class="kicker" data-r style="--d:.05s">Por debajo del capó</span>
+      <h2 data-r style="--d:.15s">¿Cómo está construido?</h2>
+      <div class="arch">
+        <div class="abox" data-r style="--d:.3s">
+          <span class="ae">📱</span>
+          <b>La app que ves</b>
+          <span>funciona en celular y computadora, clara u oscura</span>
+          <em>React</em>
+        </div>
+        <div class="abox" data-r style="--d:.44s">
+          <span class="ae">⚙️</span>
+          <b>El servidor de cuentas</b>
+          <span>guarda usuarios, gastos y saldos con seguridad</span>
+          <em>NestJS · PostgreSQL</em>
+        </div>
+        <div class="abox" data-r style="--d:.58s">
+          <span class="ae">🔍</span>
+          <b>El lector de boletas</b>
+          <span>trabaja aparte para nunca frenar la app</span>
+          <em>OCR local</em>
+        </div>
+        <div class="abox" data-r style="--d:.72s">
+          <span class="ae">🧪</span>
+          <b>Todo probado</b>
+          <span>miles de divisiones simuladas: nunca se pierde un céntimo</span>
+          <em>Pruebas automáticas</em>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap center">
+      <p class="bigq" data-r style="--d:.1s">Cuentas al día,<br>amistades intactas.</p>
+      <div class="final card" data-r style="--d:.35s">
+        <div class="f-head">
+          <b>🍽️ Almuerzo Criollo</b>
+          <span class="chip ok">Liquidado ✓</span>
+        </div>
+        <div class="f-row"><span class="av av-m av-s">M</span><span class="fnm">Mateo</span><span class="spacer"></span><span class="fr">cobró S/ 200.00</span></div>
+        <div class="f-row"><span class="av av-l av-s">L</span><span class="fnm">Lucía</span><span class="spacer"></span><span class="fr ok">pagó ✓</span></div>
+        <div class="f-row"><span class="av av-a av-s">A</span><span class="fnm">Andrés</span><span class="spacer"></span><span class="fr ok">pagó ✓</span></div>
+      </div>
+      <div class="team" data-r style="--d:.6s;margin-top:34px">
+        <span>Gonzalo Albornoz</span><span>Luis Vargas</span><span>Farid Zamudio</span>
+      </div>
+      <h2 data-r style="--d:.8s;margin-top:34px">¿Preguntas?</h2>
+    </div>
+  </section>
+
+</div>
+
+<div id="bar">
+  <span id="counter">1 / 13</span>
+  <div id="dots"></div>
+  <button class="navbtn" id="prevBtn" aria-label="Anterior">‹</button>
+  <button class="navbtn" id="nextBtn" aria-label="Siguiente">›</button>
+  <button id="fsbtn" aria-label="Pantalla completa">⛶</button>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const deck=$('#deck'), slides=$$('.slide');
+
+const dotsBox=$('#dots');
+slides.forEach((_,i)=>{const d=document.createElement('button');d.className='dot';d.setAttribute('aria-label','Diapositiva '+(i+1));d.onclick=()=>go(i);dotsBox.appendChild(d);});
+const dots=$$('#dots .dot');
+
+let cur=0;
+function syncUI(){
+  dots.forEach((d,i)=>d.classList.toggle('on',i===cur));
+  $('#counter').textContent=(cur+1)+' / '+slides.length;
+  $('#progress').style.width=((cur+1)/slides.length*100)+'%';
+}
+function go(n){
+  n=Math.max(0,Math.min(slides.length-1,n));
+  if(n===cur){syncUI();return;}
+  slides[cur].classList.remove('active');
+  cur=n;
+  deck.style.transform='translateX(-'+(cur*100)+'vw)';
+  slides[cur].classList.add('active');
+  history.replaceState(null,'','#'+cur);
+  if(slides[cur].querySelector('#receipt')) setTimeout(playReceipt,300);
+  syncUI();
+}
+function init(){
+  const h=parseInt(location.hash.slice(1));
+  if(!isNaN(h)&&h>=0&&h<slides.length) cur=h;
+  deck.style.transition='none';
+  deck.style.transform='translateX(-'+(cur*100)+'vw)';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>deck.style.transition=''));
+  slides[cur].classList.add('active');
+  if(slides[cur].querySelector('#receipt')) setTimeout(playReceipt,400);
+  syncUI();
+}
+init();
+
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();go(cur+1);}
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(cur-1);}
+  else if(e.key==='ArrowDown'){e.preventDefault();go(cur+1);}
+  else if(e.key==='ArrowUp'){e.preventDefault();go(cur-1);}
+  else if(e.key==='Home'){e.preventDefault();go(0);}
+  else if(e.key==='End'){e.preventDefault();go(slides.length-1);}
+  else if(e.key==='f'||e.key==='F'){toggleFs();}
+});
+let tx=0,ty=0;
+addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY;},{passive:true});
+addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-tx, dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.2) go(cur+(dx<0?1:-1));
+},{passive:true});
+
+$('#prevBtn').onclick=()=>go(cur-1);
+$('#nextBtn').onclick=()=>go(cur+1);
+function toggleFs(){
+  if(document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(()=>{});
+}
+$('#fsbtn').onclick=toggleFs;
+
+const stepData=[
+  {d:'Mateo crea el evento «Almuerzo Criollo» e invita a Lucía y a Andrés con su usuario. Solo ellos entran al grupo.',g:4},
+  {d:'Quien paga la cuenta (Mateo) sube la foto de la boleta desde su celular. La foto se valida y se manda a leer en segundo plano.',g:5},
+  {d:'Un lector en segundo plano saca los platos y el total de la foto. El resultado siempre pasa por revisión humana antes de usarse.',g:6},
+  {d:'Por igual o por plato: la app reparte los montos y la suma cuadra exacta al centavo. Solo generan deuda quienes no pagaron.',g:7},
+  {d:'Cada deudor ve su saldo y los datos de cobro (Yape, Plin o QR). Paga y sube la captura del voucher como evidencia.',g:8},
+  {d:'El que pagó revisa los vouchers en su bandeja y confirma. El balance del grupo se actualiza al instante.',g:9}
+];
+let stepSel=0;
+$$('.step').forEach((b,i)=>b.onclick=()=>{
+  stepSel=i;
+  $$('.step').forEach((x,j)=>x.classList.toggle('on',j===i));
+  $('#steptext').textContent=stepData[i].d;
+  $('#stepgo').classList.add('show');
+});
+$('#stepgo').onclick=()=>go(stepData[stepSel].g);
+
+let scanTimer=null;
+function playReceipt(){
+  const r=$('#receipt'); if(!r) return;
+  clearTimeout(scanTimer);
+  r.classList.remove('play');
+  $('#rstatus').classList.remove('show');
+  void r.offsetWidth;
+  r.classList.add('play');
+  scanTimer=setTimeout(()=>$('#rstatus').classList.add('show'),2200);
+}
+$('#replayBtn').onclick=playReceipt;
+
+function countUp(el,to,dur=600){
+  const from=parseFloat(el.dataset.v||'0')||0;
+  const t0=performance.now();
+  function f(t){
+    const k=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-k,3);
+    const v=Math.round(from+(to-from)*e);
+    el.textContent=(v/100).toFixed(2);
+    if(k<1) requestAnimationFrame(f); else el.dataset.v=String(to);
+  }
+  requestAnimationFrame(f);
+}
+const persons=[
+  {el:'#pM',cap:{even:'Su parte de la cuenta',items:'Lomo saltado'},v:{even:10000,items:12000}},
+  {el:'#pL',cap:{even:'Su parte de la cuenta',items:'Ají de gallina'},v:{even:10000,items:10000}},
+  {el:'#pA',cap:{even:'Su parte de la cuenta',items:'Ceviche clásico'},v:{even:10000,items:8000}}
+];
+function setMode(m){
+  $$('#seg button').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+  persons.forEach(p=>{
+    const card=$(p.el);
+    card.querySelector('.cap').textContent=p.cap[m];
+    countUp(card.querySelector('.amt'),p.v[m]);
+    card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+  });
+}
+$$('#seg button').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+
+$('#centsBtn').onclick=()=>{
+  const c=$('#centsDemo');
+  c.classList.toggle('show');
+  $('#centsBtn').textContent=c.classList.contains('show')?'Ocultar':'Probar';
+};
+
+$('#payBtn').onclick=function(){
+  this.disabled=true;
+  this.textContent='Voucher enviado ✓';
+  $('#payChip').classList.add('show');
+};
+
+let done=0;
+$$('.confirm').forEach(b=>b.onclick=()=>{
+  if(b.disabled) return;
+  b.disabled=true;
+  b.textContent='✓ Confirmado';
+  const card=b.closest('.paycard');
+  card.classList.add('done');
+  const chip=card.querySelector('.pc-head .chip');
+  chip.textContent='Confirmado ✓';
+  chip.classList.remove('wait'); chip.classList.add('ok');
+  done++;
+  $('#balTxt').textContent='S/ '+(done*100).toFixed(2)+' de S/ 200.00';
+  $('#balBar').style.width=(done/2*100)+'%';
+  if(done===2) $('#allDone').classList.add('show');
+});
+
+(function buildQr(){
+  const qr=$('#qr'); if(!qr) return;
+  const n=9;
+  for(let r=0;r<n;r++)for(let c=0;c<n;c++){
+    const cell=document.createElement('i');
+    const corner=(r<3&&c<3)||(r<3&&c>n-4)||(r>n-4&&c<3);
+    let dark;
+    if(corner) dark=!((r%3===1)&&(c%3===1));
+    else dark=((r*31+c*17+r*c)%7)%2===0;
+    if(dark) cell.classList.add('on');
+    qr.appendChild(cell);
+  }
+})();
+</script>
+</body>
+</html>
