@@ -1,179 +1,190 @@
+<USER_REQUEST>
+
 # Documento Técnico Parcial (v1.0) - SplitVision
 
 **Curso:** Construcción de Software II (SW707)
 
 **Equipo:**
 
-- Gonzalo Albornoz
+- Gonzalo Albornoz — 20232551K
 - Luis Angel Vargas Ponce — 20231314E
-- Farid Zamudio
+- Farid Zamudio — 20231215G
 
-**Fecha:** 1 de octubre de 2026
+**Fecha:** Octubre de 2026
+
+---
 
 ## 1. Descripción del problema y usuarios
 
 ### 1.1. Contexto y problema del usuario
 
-En grupos colaborativos, como compañeros de universidad, _roommates_ o grupos de viaje, la división de gastos compartidos suele realizarse de manera manual y es propensa a errores. Cuando varios integrantes asumen diferentes costos ,por ejemplo, uno paga las entradas a un evento, otro la comida y otro el transporte,determinar cuánto debe pagar cada persona y quién le debe a quién puede convertirse en un proceso confuso y generar fricción entre los integrantes del grupo.
+En grupos colaborativos, como compañeros de universidad, _roommates_ o grupos de viaje, la división de gastos compartidos suele hacerse a mano y es muy propensa a errores. Cuando varios integrantes asumen diferentes costos por ejemplo, uno paga las entradas, otro el almuerzo y otro el taxi, calcular cuánto debe pagar cada persona y quién le debe a quién se vuelve confuso y genera fricción en el grupo.
 
-Aunque los comprobantes físicos o digitales constituyen la fuente de verdad de las transacciones, la necesidad de transcribir manualmente la información de estos comprobantes para registrar los gastos resulta ineficiente y aumenta la posibilidad de errores.
+Aunque las boletas físicas o digitales son la fuente de verdad de los gastos, tener que pasar a mano cada plato y precio a una hoja de cálculo o chat resulta tedioso y aumenta la probabilidad de equivocarse en las cuentas.
 
 ### 1.2. Problema técnico de Construcción de Software
 
-Para automatizar este proceso, el sistema enfrenta tres retos de construcción que van más allá de la implementación de un CRUD convencional: dos retos críticos, relacionados con el control de concurrencia en la liquidación de deudas y con el procesamiento asíncrono de extracción OCR con datos no confiables, y un reto adicional de corrección numérica y conservación de masa en el cálculo de montos de dinero.
+Para automatizar este proceso, el sistema enfrenta tres retos de construcción que van más allá de un CRUD tradicional: el control de concurrencia cuando varios usuarios registran o confirman pagos al mismo tiempo, el procesamiento asíncrono de lectura OCR tratando sus resultados como datos no confiables, y la precisión numérica para que no se pierda ni un solo céntimo al dividir las cuentas.
 
 #### A. Condiciones de carrera y concurrencia en el ciclo de vida de pagos
 
-El sistema modela las obligaciones financieras mediante una matriz de deudas donde cada registro mantiene montos desagregados (`Monto_Total`, `Saldo_Confirmado` y `Saldo_Reservado`), de los cuales se deriva el saldo disponible para amortización:
-$$\mathrm{Saldo\_Disponible} = \mathrm{Monto\_Total} - (\mathrm{Saldo\_Confirmado} + \mathrm{Saldo\_Reservado})$$
+El sistema modela las deudas manteniendo tres montos en centavos por cada obligación (`amount_cents`, `confirmed_cents` y `reserved_cents`), de los cuales se calcula el saldo disponible para pagar:
 
-Este recurso crítico está expuesto a condiciones de carrera por dos escenarios cotidianos y altamente probables en la operación del sistema:
+$$\mathrm{Saldo\_Disponible} = \mathrm{amount\_cents} - (\mathrm{confirmed\_cents} + \mathrm{reserved\_cents})$$
 
-1. **Doble envío por latencia de red móvil (*Double Submit*):** Cuando un deudor registra un pago desde un dispositivo móvil bajo una conexión inestable (3G/Wi-Fi con pérdida de paquetes), la ausencia de respuesta inmediata suele provocar que el usuario presione repetidamente el botón de envío o que el cliente HTTP reintente la solicitud. Dos peticiones idénticas llegan al servidor con escasos milisegundos de diferencia.
-2. **Conflicto concurrente entre Deudor y Acreedor:** Cuando un deudor registra un pago, este ingresa en estado `PENDIENTE` reservando saldo. Casi de inmediato, el deudor puede decidir cancelar su solicitud (`POST /payments/:id/cancel`) mientras que, al mismo tiempo, el acreedor interactúa con su Bandeja de Cobros para confirmar (`POST /payments/:id/confirm`) o rechazar (`POST /payments/:id/reject`) la evidencia enviada. Asimismo, un deudor puede intentar ingresar un segundo pago parcial mientras el acreedor está resolviendo el primero.
+Este saldo compartido está expuesto a condiciones de carrera en dos situaciones muy comunes:
 
-En ambos escenarios, si las operaciones no se ejecutan de manera atómica y serializada, se produce el defecto conocido como **Actualización Perdida (*Lost Update*)**, derivado de un antipatrón de verificar y luego actuar (*check-then-act*) sin aislamiento:
-1. Dos hilos concurrentes leen el mismo estado y saldo vigente de la deuda.
-2. Ambos verifican exitosamente las precondiciones con información que queda desactualizada en milisegundos.
-3. Ambos escriben sus modificaciones en la base de datos de forma desfasada.
+1. **Doble envío por lentitud de red móvil (_Double Submit_):** Cuando un deudor registra un pago desde su celular con señal inestable, la demora en la respuesta hace que suela presionar dos veces el botón de enviar o que el navegador reintente la petición. Dos solicitudes iguales llegan al servidor con pocos milisegundos de diferencia.
+2. **Operaciones simultáneas entre Deudor y Acreedor:** Cuando un deudor registra un pago, este entra en estado `PENDIENTE` y reserva parte del saldo. Casi al mismo tiempo, el deudor podría intentar cancelar su pago (`POST /api/payments/:id/cancel`) justo cuando el acreedor está en su Bandeja de Pagos confirmándolo (`POST /api/payments/:id/confirm`) o rechazándolo (`POST /api/payments/:id/reject`), o bien cuando se ejecuta la compensación automática de deudas cruzadas del evento (`POST /api/events/:id/compensate`).
 
-Como consecuencia, se vulneran las invariantes fundamentales del dominio: el saldo disponible puede volverse negativo, los montos reservados pueden desincronizarse de los pagos reales y el balance contable del evento queda corrompido. Para resolver este reto, el sistema implementa **bloqueos pesimistas a nivel de fila (`SELECT ... FOR UPDATE`)** dentro de transacciones de base de datos aisladas, garantizando una evaluación secuencial y atómica, complementada con **llaves de idempotencia (`Idempotency-Key`)** para descartar reenvíos duplicados.
+Si estas operaciones no se ejecutan de forma aislada y en orden, ocurre el problema de **Actualización Perdida (_Lost Update_)**, causado por verificar una condición y actuar después (_check-then-act_) sin bloquear el registro:
+
+1. Dos peticiones leen al mismo tiempo el mismo saldo disponible de la deuda.
+2. Ambas validan que el monto alcanza usando un dato que queda desactualizado al instante.
+3. Ambas actualizan la base de datos pisándose entre sí.
+
+Si esto pasa, el saldo disponible puede volverse negativo, los montos reservados no cuadran con los pagos reales y el balance del evento se rompe. Para evitarlo, el sistema aplica **bloqueos pesimistas a nivel de fila (`SELECT ... FOR UPDATE`)** dentro de transacciones SQL, obligando a que las peticiones sobre una misma deuda se procesen en fila india, y lo complementa con **llaves de idempotencia (`Idempotency-Key`)** para ignorar clics repetidos.
 
 #### B. Cómputo intensivo asíncrono y datos no confiables de extracción OCR
 
-Para evitar la transcripción manual de comprobantes, el sistema incorpora un motor de **Reconocimiento Óptico de Caracteres (OCR)** encargado de extraer automáticamente los ítems, precios y montos totales a partir de imágenes de boletas y facturas.
+Para ahorrarle al usuario el trabajo de digitar la boleta, el sistema incluye un subsistema de **Reconocimiento Óptico de Caracteres (OCR)** que lee los ítems y el total desde la foto del comprobante.
 
-En esta versión v1.0, el procesamiento OCR no se delega a una API cloud externa de pago, sino que se ejecuta de forma local mediante un motor especializado (**Tesseract.js / WebAssembly**). Esta decisión arquitectónica introduce retos de construcción sustanciales:
+El diseño de este subsistema combina la posibilidad de consultar un servicio OCR externo por HTTP con un motor local de respaldo basado en **Tesseract.js (WebAssembly)**. Esto plantea varios retos de construcción:
 
-- **Bloqueo del Event Loop por cómputo intensivo (*CPU-Bound*):** El procesamiento de imágenes, binarización y ejecución de redes neuronales de OCR demanda un uso intensivo de CPU. Si se ejecutara dentro del hilo principal de la API de Node.js, bloquearía el *Event Loop*, degradando severamente la latencia e impidiendo que el servidor atienda solicitudes HTTP de otros usuarios. Por ello, la extracción se delega a un **proceso Worker independiente** mediante una cola de tareas asíncronas persistida en PostgreSQL.
-- **Gestión del ciclo de vida y problemas de runtime (*Memory Leaks*):** Los workers nativos de Tesseract en WebAssembly/C++ administran buffers de memoria significativos. Si su ciclo de vida no se gestiona estrictamente liberando los recursos al terminar (`worker.terminate()`), se producen fugas de memoria progresivas que agotan el heap del proceso.
-- **Naturaleza inherentemente no confiable del resultado OCR:** Los comprobantes físicos peruanos presentan comúnmente arrugas, manchas, iluminación deficiente o impresiones térmicas desgastadas. En consecuencia, el texto extraído es información ruidosa y no confiable: montos truncados, caracteres alfanuméricos confundidos (como 'O' por '0') o líneas incompletas. El sistema aplica **programación defensiva rigurosa** (expresiones regulares defensivas, validación de esquemas y parseo seguro) y establece un paso obligatorio de verificación y corrección humana antes de que cualquier dato del comprobante sea utilizado para generar deudas.
-- **Desacoplamiento arquitectónico mediante el patrón Adapter:** Para garantizar la capacidad de evolución del sistema hacia proveedores OCR en la nube en el Examen Final, la lógica de extracción se aísla mediante una interfaz canónica `OcrProvider`. Actualmente se soportan `TesseractOcrProvider` y `MockOcrProvider`, desacoplando completamente la lógica de negocio del motor de reconocimiento.
+- **Bloqueo del Event Loop por uso intensivo de CPU (_CPU-Bound_):** Analizar una imagen y ejecutar el reconocimiento óptico en Tesseract consume bastante procesador. Si lo hiciéramos dentro del mismo proceso de la API en Node.js, el _Event Loop_ se congelaría varios segundos por cada foto, dejando colgados a los demás usuarios que estén navegando en la app. Por eso, separamos la lectura en un **proceso Worker independiente** que se comunica con la API mediante una cola de trabajos guardada en PostgreSQL (`receipt_jobs`).
+- **Gestión de memoria en tiempo de ejecución (_Memory Leaks_):** Los workers de Tesseract en WebAssembly reservan bloques grandes de memoria fuera del recolector de basura normal de JavaScript. Si no se destruyen explícitamente al terminar de leer cada boleta (`worker.terminate()`), la memoria RAM se llena rápido hasta tumbar el servidor.
+- **Resultados del OCR como datos no confiables:** Las boletas reales suelen estar arrugadas, mal impresas o fotografiadas con sombras. Por ello, el texto devuelto por el OCR puede traer errores (como confundir letras con números o leer mal un precio). El sistema aplica **programación defensiva** al parsear el texto y obliga a que el usuario revise y confirme los datos en pantalla (estado `EXTRAÍDO`) antes de crear cualquier deuda.
+- **Desacoplamiento mediante la interfaz `OcrClient`:** Para no atar el negocio a una sola librería, definimos el contrato `OcrClient` (`ocr.client.ts`), el cual tiene tres implementaciones intercambiables: `HttpOcrClient` (para conectarse a un servicio OCR externo), el cliente local con Tesseract.js (usado también como respaldo automático si cae el externo) y `FakeOcrClient` (que permite simular fallas, demoras y datos corruptos en las pruebas sin depender de internet).
 
 #### C. Precisión aritmética en el cálculo de montos y conservación de masa
 
-La división de gastos en grupos rara vez produce números enteros o divisiones exactas. Por ejemplo, al dividir una cuenta de S/ 100.00 de manera equitativa entre tres participantes, cada uno debería pagar S/ 33.3333... La suma aritmética de tres cuotas truncadas a dos decimales (S/ 33.33 × 3) produce S/ 99.99, generándose una pérdida contable de un centavo (S/ 0.01). 
+Dividir gastos entre varias personas casi nunca da una división exacta. Por ejemplo, al dividir S/ 100.00 en partes iguales entre 3 amigos, a cada uno le tocaría S/ 33.3333... Si simplemente redondeamos a S/ 33.33, la suma da S/ 99.99 y desaparece un céntimo (S/ 0.01).
 
-Asimismo, los lenguajes de programación modernos representan los números fraccionarios bajo el estándar de punto flotante de doble precisión **IEEE 754**. En dicho estándar, ciertas fracciones decimales no tienen representación binaria finita exacta (por ejemplo, `0.1 + 0.2 === 0.30000000000000004`), lo cual acumula errores catastróficos en balances financieros.
+Además, JavaScript maneja los números con decimales usando punto flotante binario (**IEEE 754**), donde operaciones simples como `0.1 + 0.2` dan `0.30000000000000004`, provocando descuadres en los saldos.
 
-Para garantizar la integridad matemática, SplitVision aplica:
-1. **Representación entera exacta en centavos:** Ningún cálculo financiero utiliza punto flotante. Todos los montos se modelan y almacenan como enteros en céntimos (`amount_cents`), eliminando de raíz el error de precisión binaria.
-2. **Invariante de conservación de masa (*Design by Contract*):** El motor de división implementa un contrato matemático estricto donde la suma de las partes asignadas debe ser idéntica al total del comprobante:
-$$\sum_{i=1}^{n} \mathrm{parte}_i \equiv \mathrm{total\_comprobante}$$
-3. **Algoritmo determinista de asignación de residuos:** Los centavos indivisibles no se descartan ni se crean de la nada; se asignan de manera predecible a los participantes siguiendo un orden determinista de desempate (*tie-break*). Esta invariante es verificada automáticamente mediante pruebas basadas en propiedades (*Property-Based Testing* con `fast-check`) sobre miles de combinaciones aleatorias.
+Para asegurar que las cuentas cuadren siempre al centavo, SplitVision aplica:
+
+1. **Aritmética entera en centavos:** Nunca usamos decimales ni punto flotante para operar dinero. Todo monto se convierte desde texto a números enteros en centavos (`total_cents`, `amount_cents`).
+2. **Invariante de conservación de masa (_Design by Contract_):** El motor de reparto verifica por contrato que la suma de las partes calculadas sea exactamente igual al total de la boleta:
+   $$\sum_{i=1}^{n} \mathrm{parte}_i \equiv \mathrm{total\_comprobante}$$
+3. **Reparto determinista de los céntimos sobrantes:** Los centavos que sobran en una división inexacta se reparten uno por uno siguiendo un orden fijo y predecible entre los participantes. Esta regla está probada con _Property-Based Testing_ (`fast-check`) corriendo 1,000 casos aleatorios en las pruebas automatizadas.
 
 #### D. Relación entre los retos y las técnicas del curso
 
-La siguiente tabla resume cómo cada reto técnico se vincula directamente con las técnicas de construcción de software exigidas en SW707:
-
-| Reto de construcción | Riesgo principal | Técnica aplicada | Sección en doc |
-| :--- | :--- | :--- | :--- |
-| **Concurrencia en la liquidación de deudas** | *Lost Update*, saldo negativo y pagos duplicados por *double-submit* o resolución simultánea acreedor/deudor | Bloqueo pesimista a nivel de fila (`SELECT ... FOR UPDATE`), aislamiento transaccional y llaves de idempotencia (`Idempotency-Key`) | 8 |
-| **Cómputo intensivo de extracción OCR** | Bloqueo del *Event Loop* de la API y degradación de disponibilidad del sistema | Arquitectura desacoplada en dos procesos (API y Worker) y cola de tareas asíncronas en PostgreSQL | 3 y 5 |
-| **Datos no confiables del OCR** | Generación de deudas con montos erróneos o corrupción de datos por lectura ruidosa | Programación defensiva, parseo resiliente, esquemas de validación y verificación humana obligatoria | 6.2 |
-| **Precisión numérica y reparto de residuos** | Pérdida de centavos y balances descuadrados por redondeo o imprecisión IEEE 754 | Aritmética entera en centavos, contratos de software (*Design by Contract*) y *Property-Based Testing* | 5 y 6.1 |
-| **Fugas de memoria en el runtime** | Agotamiento del heap de memoria por workers de WebAssembly/C++ no destruidos | Gestión explícita del ciclo de vida de recursos y terminación de workers nativos | 5 |
+| Reto de construcción                         | Riesgo principal                                                                          | Técnica aplicada                                                                                                        | Sección en doc |
+| :------------------------------------------- | :---------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- | :------------: |
+| **Concurrencia en la liquidación de deudas** | _Lost Update_, saldo negativo y pagos duplicados por doble clic o confirmación simultánea | Bloqueo pesimista a nivel de fila (`SELECT ... FOR UPDATE`), transacciones y llaves de idempotencia (`Idempotency-Key`) |       8        |
+| **Cómputo intensivo de extracción OCR**      | Bloqueo del _Event Loop_ de la API y lentitud general del sistema                         | Arquitectura en dos procesos (API y Worker) y cola de tareas en PostgreSQL (`receipt_jobs`)                             |     3 y 5      |
+| **Datos no confiables del OCR**              | Creación de deudas con montos falsos o caídas por lecturas corruptas                      | Programación defensiva, validación en el parser y revisión humana obligatoria en estado `EXTRAÍDO`                      |      6.2       |
+| **Precisión numérica y reparto de residuos** | Pérdida de céntimos y saldos descuadrados por punto flotante IEEE 754                     | Operaciones enteras en centavos (`money.ts`), _Design by Contract_ y _Property-Based Testing_                           |    5 y 6.1     |
+| **Fugas de memoria en el runtime**           | Caída del proceso por memoria acumulada en workers de WebAssembly                         | Control estricto del ciclo de vida del worker de OCR y liberación de recursos                                           |       5        |
 
 ### 1.3. Usuarios / Actores del sistema
 
 #### 1.3.1. Usuarios finales (grupos colaborativos)
 
-Son las personas registradas en el sistema con una cuenta propia, que interactúan de forma concurrente para cargar comprobantes, verificar las extracciones automáticas y saldar deudas cruzadas. Dentro de un evento, un usuario puede desempeñar los siguientes roles:
+Son las personas registradas con una cuenta propia en la aplicación, que entran a sus grupos para subir boletas, revisar los montos leídos por el OCR y pagar o cobrar sus deudas. Dentro de un evento, un usuario puede actuar como:
 
-- **Pagador (acreedor):** integrante que asumió el pago de un gasto y carga el comprobante correspondiente. Verifica los datos extraídos, selecciona la modalidad de reparto y recibe los pagos de los demás integrantes. El usuario que crea el evento y vincula a los participantes puede, o no, ser el pagador.
-- **Participante (deudor):** integrante vinculado al evento que mantiene saldos pendientes a favor de otros integrantes, consulta sus deudas y registra los pagos correspondientes.
-  Estos roles son contextuales y no dependen de la cuenta: un mismo usuario puede ser acreedor en un gasto y deudor en otro dentro del mismo evento, o tener roles distintos en eventos diferentes.
+- **Pagador (acreedor):** Es quien pagó la cuenta en el local y sube la foto del comprobante al evento. Revisa los ítems extraídos, elige cómo se va a dividir el gasto y luego confirma o rechaza los pagos que le envían sus amigos.
+- **Participante (deudor):** Es el integrante del grupo a quien se le asigna una parte del gasto; puede ver cuánto debe, revisar los datos de cobro del acreedor (Yape, Plin, cuenta bancaria o QR) y registrar su pago subiendo la captura de su transferencia.
+
+Estos roles cambian según la boleta: en una misma salida, un usuario puede ser pagador del almuerzo y deudor del taxi, por lo que el sistema también permite cruzar y compensar automáticamente las deudas mutuas.
 
 #### 1.3.2. Subsistema de Extracción (Motor OCR en Worker)
 
-Componente del sistema desacoplado mediante un proceso Worker asíncrono, encargado del procesamiento de imágenes y reconocimiento óptico de comprobantes físicos a través de Tesseract.js / WebAssembly. Se comunica mediante una cola de tareas en PostgreSQL y utiliza el patrón Adapter para aislar la lógica del motor de reconocimiento, permitiendo evaluar el rendimiento ante tareas intensivas de CPU y memoria sin comprometer la API principal.
+Es el proceso en segundo plano encargado de tomar los trabajos pendientes de la tabla `receipt_jobs`, procesar las imágenes y extraer los platos y el total. Usa la interfaz `OcrClient` junto con un Circuit Breaker (`opossum`) para aislar fallos del motor de lectura sin afectar la estabilidad de la API principal.
 
 ### 1.4. Objetivo del prototipo (v1.0)
 
-**Objetivo general:** construir un prototipo funcional de SplitVision que permita registrar gastos compartidos a partir de comprobantes registrar la liquidación de las deudas entre los integrantes de un evento, garantizando la consistencia de los saldos ante operaciones concurrentes y la continuidad del servicio ante fallas del servicio OCR.
+**Objetivo general:** Construir el prototipo funcional v1.0 de SplitVision que permita gestionar gastos grupales a partir de comprobantes y liquidar las deudas resultantes entre los participantes, asegurando que los saldos nunca se corrompan ante pagos simultáneos y que el sistema siga operando con normalidad si falla la lectura automática del OCR.
 
 **Objetivos específicos:**
 
-- Garantizar la integridad de la matriz de deudas ante pagos simultáneos mediante control de concurrencia y bloqueos transaccionales.
-- Mantener la disponibilidad del sistema ante latencia, errores o indisponibilidad del servicio OCR mediante procesamiento en segundo plano y mecanismos de tolerancia a fallas.
-- Asegurar que la suma de las deudas generadas sea equivalente al monto total del comprobante mediante contratos de diseño (_Design by Contract_).
-- Proteger el sistema frente a datos de entrada no confiables, incluidos los resultados del servicio OCR, mediante programación defensiva.
+- Asegurar la consistencia de la tabla de deudas frente a pagos y confirmaciones simultáneas usando transacciones y bloqueos a nivel de fila.
+- Mantener la fluidez y disponibilidad de la aplicación frente a demoras o fallos del OCR mediante el proceso Worker, un Circuit Breaker con respaldo local y una vía de ingreso manual.
+- Garantizar mediante contratos (_Design by Contract_) que el reparto equitativo o por ítems conserve exactamente el total del comprobante sin perder centavos.
+- Proteger el backend frente a archivos inválidos, parámetros manipulados o lecturas ruidosas del OCR aplicando programación defensiva.
+
+---
 
 ## 2. Alcance y requisitos principales
 
 ### 2.1. Delimitación del Prototipo Funcional (Alcance v1.0)
 
-El prototipo funcional que se presentará en el Examen Parcial implementa un flujo de negocio completo, desde la creación de un evento hasta la liquidación de las deudas entre sus integrantes. Los objetivos de esta versión se describen en la sección 1.4; esta sección delimita qué funcionalidades se incluyen y cuáles quedan fuera. La versión v1.0 constituye la línea base que será evolucionada posteriormente hasta la versión final del proyecto.
+El prototipo v1.0 cubre de punta a punta el flujo de negocio: desde el registro de usuarios y creación del grupo, pasando por el escaneo de boletas y división de ítems, hasta la compensación de saldos cruzados y confirmación de pagos con evidencia. Esta versión sirve como base sólida sobre la cual se trabajará la evolución hacia el Examen Final.
 
 **Dentro del alcance (v1.0):**
 
-- Autenticación básica nativa mediante cuentas propias de usuario (RF1).
-- Creación de eventos y vinculación de participantes registrados (RF2).
-- Carga de comprobantes y extracción de su información mediante un proceso Worker con OCR local (Tesseract.js), procesada en segundo plano (RF3).
-- Verificación de los datos extraídos por parte del usuario y algoritmo de división de gastos, mediante reparto equitativo o reparto por ítems con conservación estricta de masa monetaria (RF4).
-- Registro de pagos con comprobante/evidencia obligatoria, máquina de estados de pago (`PENDIENTE`, `CONFIRMADO`, `RECHAZADO`, `CANCELADO`) y Bandeja de verificación para el acreedor, respaldado por bloqueo pesimista a nivel de fila (`SELECT ... FOR UPDATE`) y llaves de idempotencia para garantizar la serialización de solicitudes concurrentes (RF5).
-- Consulta de deudas, estado de cuenta por participante y balance general del evento (RF6).
-- Interfaz web SPA desarrollada en React y TypeScript que permite ejecutar el flujo de negocio completo de forma intuitiva tanto en computadoras de escritorio como en dispositivos móviles.
+- Registro e inicio de sesión con cuentas propias, sesiones en base de datos, protección contra fuerza bruta y validación CSRF (RF1).
+- Creación de eventos, búsqueda de usuarios e invitaciones con aceptación o rechazo, además de configuración de métodos de cobro en el perfil (Yape, Plin, cuenta/CCI y código QR) (RF2).
+- Subida de fotos de comprobantes validada por _magic bytes_, detección de imágenes duplicadas por hash SHA-256 y lectura asíncrona en el Worker con opción de reintento o ingreso manual si falla el OCR (RF3).
+- Revisión y edición de los datos extraídos por el pagador, y cálculo del reparto en modo equitativo (`EQUITATIVE`) o por unidades de ítem (`BY_ITEM`) cumpliendo la conservación de centavos (RF4).
+- Registro de pagos con evidencia fotográfica, estados de pago (`PENDIENTE`, `CONFIRMADO`, `RECHAZADO`, `CANCELADO`), bandeja de revisión para el acreedor y compensación automática de deudas mutuas, protegido con `SELECT ... FOR UPDATE` e `Idempotency-Key` (RF5).
+- Consulta de deudas ("Debo" y "Me deben"), desglose de cruces mutuos, balance consolidado del evento y resumen listo para copiar a WhatsApp (RF6).
+- Aplicación web SPA en React y TypeScript adaptable a celulares y escritorio, con soporte de tema claro/oscuro.
 
 **Fuera del alcance (v1.0):**
 
-- Pasarelas bancarias automatizadas de débito directo en cuenta (Visa, Mastercard, Stripe). La transferencia de fondos se realiza mediante billeteras digitales peruanas (Yape, Plin) o banca móvil fuera del sistema, y los usuarios registran el pago subiendo su comprobante a SplitVision.
-- Custodia, intermediación o retención legal de fondos monetarios.
-- Inicio de sesión con proveedores de identidad externos / redes sociales (OAuth).
-- Notificaciones push nativas al sistema operativo.
-- Aplicación móvil nativa compilada para tiendas App Store o Google Play Store (la SPA Web está optimizada como aplicación web responsive accesible por red local).
-- Despliegue final en infraestructura cloud de producción (se opera en entorno local contenerizado para la v1.0).
+- Cobros automáticos conectados directamente a bancos o tarjetas (las transferencias se hacen por Yape, Plin o banca móvil del usuario, y en SplitVision se sube la captura como evidencia).
+- Custodia o retención de dinero real dentro de la plataforma.
+- Inicio de sesión con redes sociales (Google/Facebook OAuth).
+- Notificaciones push nativas en el celular.
+- Publicación en tiendas móviles App Store o Google Play.
 
 ### 2.2. Modelo de Dominio y Operación (Sesiones)
 
-Para responder a la necesidad de trazabilidad en las transacciones concurrentes, el dominio operará bajo la siguiente estructura:
+#### A. Usuarios Persistentes y Sesiones Seguras:
 
-#### A. Usuarios Persistentes:
+Cada participante se registra con un `username` único (3 a 20 caracteres alfanuméricos o guion bajo), un correo electrónico único y una contraseña que se guarda hasheada con Argon2 (`@node-rs/argon2`). Además, cada usuario puede configurar en su perfil su celular, billetera preferida (`YAPE`, `PLIN`, `BIM`), banco, número de cuenta, CCI y subir la imagen de su código QR para facilitar que sus amigos le paguen.
 
-Cada actor en el sistema requiere una cuenta propia (ID único, username, email y contraseña cifrada con Argon2) para iniciar sesión de forma independiente. El username y el correo electrónico deben ser únicos dentro del sistema, ya que permiten identificar y buscar usuarios para vincularlos a eventos. Las contraseñas nunca se almacenan en texto plano.
+Al iniciar sesión, el sistema registra una sesión en la tabla `sessions` asociada a una cookie `httpOnly` (`sid`) y un token `csrf` que el frontend envía en la cabecera `x-csrf-token` en cada operación que modifica datos. De esta forma sabemos con total exactitud qué usuario hizo cada acción.
 
-No existen "sesiones grupales" ni un único usuario que anota por todos. Esta identidad persistente permite vincular cada operación con el usuario que la realizó, lo que garantiza la trazabilidad y la no repudiación de las transacciones.
+#### B. Eventos e Invitaciones (Límites de Contexto):
 
-#### B. Eventos (Agrupadores Temporales):
+Los gastos se agrupan dentro de "Eventos" (por ejemplo, "Salida a Barranco" o "Almuerzo FIIS"). Para sumar amigos al grupo, los participantes actuales les envían invitaciones (`event_invitations`) que los invitados aceptan o rechazan desde su Bandeja. El evento funciona como una barrera de seguridad: nadie que no sea participante activo (`event_participants`) puede ver ni tocar los comprobantes, saldos o deudas de ese grupo.
 
-Los usuarios interactúan dentro de "Eventos" (ej. "Viaje a Cusco", "Cena de Fin de Ciclo"). El Evento es la entidad padre donde se vinculan los participantes y que delimita el contexto de los gastos, las deudas y los permisos.
+#### C. Comprobantes, Cola de Trabajos y Extracción:
 
-#### C. Comprobantes y Extracción:
+Cuando se sube la imagen de una boleta, se crea el comprobante en estado `PROCESANDO` junto con una tarea en la tabla `receipt_jobs` dentro de la misma transacción. El Worker toma la tarea, ejecuta el OCR y pasa el comprobante a `EXTRAÍDO` (o a `FALLIDO` si la foto no se pudo leer tras los reintentos). Luego el pagador revisa los montos, elige el modo de reparto y confirma la boleta (`CONFIRMADO`).
 
-El sistema extrae la información del comprobante mediante el Worker asíncrono y el usuario verifica los datos obtenidos. El gasto podrá dividirse mediante reparto equitativo entre los participantes o mediante reparto por ítems, asignando los ítems consumidos a cada participante.
+#### D. Matriz de Deudas, Reserva de Saldo y Compensación Cruzada:
 
-#### D. Matriz de Deudas y Pagos con Reserva:
+Al confirmar el reparto de una boleta, se crean registros en la tabla `debts` para cada participante (excepto para el mismo pagador). Cada deuda guarda en centavos el monto original (`amount_cents`), lo ya confirmado (`confirmed_cents`) y lo que está en revisión por pagos pendientes (`reserved_cents`).
 
-Es la estructura relacional donde se registran las obligaciones entre los participantes de un evento. Para soportar concurrencia y amortizaciones parciales de forma matemáticamente robusta, cada deuda desagrega su estado financiero en céntimos: monto total (`amount_cents`), monto confirmado (`confirmed_cents`) y monto reservado en pagos pendientes (`reserved_cents`). 
-
-Cuando un deudor registra un pago, este no cancela la deuda de inmediato; se registra en estado `PENDIENTE`, adjuntando su evidencia gráfica, e incrementa temporalmente el saldo reservado (`reserved_cents`), protegiendo el saldo disponible. El acreedor recibe el pago en su **Bandeja de Pagos**, donde puede confirmar la acreditación (trasladando el monto a `confirmed_cents`) o rechazarlo (liberando la reserva).
+Cuando el deudor envía un pago con su captura de pantalla, el pago queda `PENDIENTE` y ese monto se suma a `reserved_cents` para que no se pueda pagar dos veces. El acreedor lo revisa en su Bandeja de Pagos: si lo confirma, el monto pasa de `reserved_cents` a `confirmed_cents`; si lo rechaza (o el deudor lo cancela), se libera de `reserved_cents`. Además, si en un evento dos amigos se deben mutuamente por distintas boletas, el sistema cruza ambas deudas automáticamente registrando un abono interno con referencia `COMPENSACION`, para que solo tengan que transferirse la diferencia neta.
 
 #### E. Entidades principales e invariantes
 
-La siguiente tabla resume las entidades del dominio implementadas en el sistema:
+La base de datos relacional (`migrations/001_init.sql` a `006_billetera_y_cci.sql`) modela las siguientes tablas:
 
-| Entidad | Descripción | Atributos principales |
-| :--- | :--- | :--- |
-| **Usuario** | Persona registrada en el sistema con credenciales y datos de cobro | `id`, `username`, `email`, `password_hash` (Argon2), `preferred_wallet`, `phone`, `bank_name`, `account_number`, `cci`, `qr_image_path` |
-| **Evento** | Agrupador de participantes, gastos y deudas | `id`, `name`, `creator_id`, `created_at` |
-| **Participante** | Vínculo de membresía entre un usuario y un evento | `event_id`, `user_id`, `joined_at` |
-| **Comprobante** | Gasto registrado a partir de una boleta/factura | `id`, `event_id`, `payer_id`, `total_cents`, `image_path`, `status` (`SUBIENDO`, `PROCESANDO`, `LISTO`, `CONFIRMADO`, `ERROR`) |
-| **Ítem** | Línea de detalle del comprobante con su asignación | `id`, `receipt_id`, `description`, `quantity`, `unit_price_cents` |
-| **Deuda** | Obligación financiera entre un deudor y un acreedor | `id`, `event_id`, `receipt_id`, `creditor_id`, `debtor_id`, `amount_cents`, `confirmed_cents`, `reserved_cents` |
-| **Pago** | Transacción de amortización con evidencia y ciclo de vida | `id`, `debt_id`, `payer_id`, `amount_cents`, `method`, `evidence_path`, `status` (`PENDIENTE`, `CONFIRMADO`, `RECHAZADO`, `CANCELADO`), `idempotency_key`, `created_at`, `resolved_at` |
+| Entidad (Tabla SQL)                                     | Descripción                                                | Atributos principales                                                                                                                                                                                      |
+| :------------------------------------------------------ | :--------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Usuario (`users`)**                                   | Cuenta de usuario, perfil y datos de cobro                 | `id`, `username`, `email`, `password_hash`, `image_path`, `phone`, `preferred_wallet`, `bank_name`, `account_number`, `cci`, `qr_image_path`                                                               |
+| **Sesión (`sessions`)**                                 | Sesiones activas y token anti-CSRF                         | `id`, `user_id`, `csrf`, `created_at`, `last_seen_at`, `expires_at`                                                                                                                                        |
+| **Intentos de Login (`login_attempts`)**                | Registro de fallos para bloqueo por fuerza bruta           | `id`, `identifier`, `attempted_at`                                                                                                                                                                         |
+| **Evento (`events`)**                                   | Grupo donde se comparten gastos                            | `id`, `name`, `created_by`, `image_path`, `created_at`                                                                                                                                                     |
+| **Participante (`event_participants`)**                 | Miembros que pertenecen a un evento                        | `event_id`, `user_id`, `joined_at`                                                                                                                                                                         |
+| **Invitación (`event_invitations`)**                    | Solicitudes para unirse a un evento                        | `id`, `event_id`, `invitee_id`, `inviter_id`, `status` (`PENDIENTE`, `ACEPTADA`, `RECHAZADA`)                                                                                                              |
+| **Comprobante (`receipts`)**                            | Boleta o gasto subido a un evento                          | `id`, `event_id`, `payer_id`, `status` (`CARGADO`, `PROCESANDO`, `EXTRAÍDO`, `CONFIRMADO`, `FALLIDO`), `total_cents`, `tax_cents`, `tip_cents`, `discount_cents`, `image_path`, `image_hash`, `split_mode` |
+| **Ítem (`receipt_items`)**                              | Platos o productos de un comprobante                       | `id`, `receipt_id`, `position`, `description`, `quantity`, `unit_price_cents`                                                                                                                              |
+| **Trabajo OCR (`receipt_jobs`)**                        | Cola persistente de tareas para el Worker                  | `id`, `receipt_id`, `status` (`PENDING`, `RUNNING`, `DONE`, `FAILED`), `attempts`, `next_attempt_at`, `lease_owner`, `lease_expires_at`, `correlation_id`                                                  |
+| **Reparto (`split_participants` / `item_assignments`)** | Asignación de quién participa o quién consumió cada unidad | `receipt_id`, `user_id`, `item_id`, `unit_index`                                                                                                                                                           |
+| **Deuda (`debts`)**                                     | Saldo que un deudor le debe a un acreedor por una boleta   | `id`, `receipt_id`, `event_id`, `debtor_id`, `creditor_id`, `amount_cents`, `confirmed_cents`, `reserved_cents`                                                                                            |
+| **Pago (`payments`)**                                   | Abono registrado con evidencia e idempotencia              | `id`, `debt_id`, `payer_id`, `amount_cents`, `method`, `reference`, `evidence_path`, `status`, `idempotency_key`                                                                                           |
+| **Auditoría (`audit_logs`)**                            | Bitácora de operaciones importantes                        | `id`, `user_id`, `operation`, `resource`, `result`, `correlation_id`, `created_at`                                                                                                                         |
 
-Las reglas que el sistema garantiza estrictamente en todo momento (**invariantes del dominio**) son:
+Las reglas matemáticas que el sistema mantiene siempre (**invariantes del dominio**, reforzadas incluso con `CHECK CONSTRAINTS` en PostgreSQL) son:
 
-1. **Invariante de no sobregiro ni saldo negativo:** En cualquier instante, la suma del saldo confirmado y el saldo reservado nunca puede superar el monto total de la deuda:
-$$0 \le \mathrm{confirmed\_cents} + \mathrm{reserved\_cents} \le \mathrm{amount\_cents}$$
-2. **Invariante de saldo disponible:** El saldo disponible para nuevos pagos se calcula de forma unívoca y determinista:
-$$\mathrm{available\_cents} = \mathrm{amount\_cents} - (\mathrm{confirmed\_cents} + \mathrm{reserved\_cents})$$
-3. **Invariante de conservación de masa monetaria:** La suma de las deudas generadas más la cuota asumida por el propio pagador es idéntica al monto total del comprobante verificado:
-$$\sum_{i=1}^{k} \mathrm{deuda}_i + \mathrm{cuota\_pagador} \equiv \mathrm{total\_comprobante}$$
+1. **Invariante de no sobregiro ni saldo negativo (`debts_balances_check`):** En todo momento, lo confirmado más lo reservado nunca supera el monto de la deuda:
+   $$0 \le \mathrm{confirmed\_cents} + \mathrm{reserved\_cents} \le \mathrm{amount\_cents}$$
+2. **Invariante de saldo disponible:** Lo que falta por abonar en una deuda se calcula siempre como:
+   $$\mathrm{available\_cents} = \mathrm{amount\_cents} - (\mathrm{confirmed\_cents} + \mathrm{reserved\_cents})$$
+3. **Invariante de conservación de masa monetaria:** Al confirmar un reparto, la suma de las deudas creadas más la parte del propio pagador es idéntica al total del comprobante:
+   $$\sum_{i=1}^{k} \mathrm{deuda}_i + \mathrm{cuota\_pagador} \equiv \mathrm{total\_cents}$$
 
 ### 2.3. Flujo de Negocio
 
-El siguiente diagrama de secuencia detalla la interacción asíncrona y la resolución del escenario concurrente. Corresponde a los seis pasos descritos en la sección 2.4.
+El siguiente diagrama muestra la secuencia completa del flujo de negocio, incluyendo el trabajo asíncrono del Worker y el bloqueo en los pagos.
 
 #### Diagrama de Flujo del negocio Simplificado
 
@@ -189,106 +200,104 @@ El siguiente diagrama de secuencia detalla la interacción asíncrona y la resol
 
 ### 2.4. Explicación del Flujo principal y comportamiento del sistema
 
-Para facilitar la comprensión del dominio de negocio, se describe el ciclo de vida completo de una transacción mediante el siguiente escenario: los usuarios Mateo, Lucía y Andrés comparten una salida. Mateo realiza el pago inicial de la cuenta y el sistema debe gestionar la recuperación de los saldos entre ellos.
+Veamos el recorrido completo con un ejemplo práctico: Mateo, Lucía y Andrés salen a almorzar. Mateo paga la cuenta con su tarjeta y usa SplitVision para dividir el gasto y cobrarles a sus amigos.
 
-#### Paso 1: Inicialización de Dominio (Creación del Evento)
+#### Paso 1: Creación del Evento e Invitaciones
 
-- **Acción del usuario:** Mateo inicializa un nuevo Evento ("Salida"), queda vinculado a él como primer participante y busca a Lucía y Andrés, que ya están registrados, mediante su username o correo electrónico para vincularlos al Evento.
-- **Comportamiento del sistema:** el sistema crea una nueva entidad lógica (Evento) en la capa de persistencia y establece las relaciones de pertenencia entre los usuarios autenticados y este contenedor. Esta agrupación actúa como un límite de contexto: las consultas de saldos y los permisos de escritura quedan aislados y protegidos únicamente para los miembros vinculados.
+- **Acción del usuario:** Mateo crea el evento "Almuerzo Criollo", quedando registrado automáticamente como participante. Luego busca a Lucía y Andrés por su `username` o correo y les envía una invitación, la cual ellos aceptan desde su Bandeja (`/bandeja`).
+- **Comportamiento del sistema:** Se inserta el evento en `events` y los vínculos en `event_participants` dentro de una transacción, dejando trazabilidad en `audit_logs`. A partir de ahí, solo ellos tres tienen permiso para ver o registrar gastos en ese grupo.
 
-#### Paso 2: Recepción y Delegación Asíncrona (Carga del Comprobante)
+#### Paso 2: Subida del Comprobante y Encolado Asíncrono
 
-- **Acción del usuario:** Mateo carga la fotografía del comprobante para no ingresar el gasto manualmente.
-- **Comportamiento del sistema:** el backend recibe el archivo y ejecuta validaciones defensivas sobre el formato y el tamaño de la imagen, además de verificar que el usuario pertenezca al evento. Para evitar el bloqueo del hilo de ejecución web (*Event Loop*) durante el procesamiento intensivo del motor OCR local (Tesseract.js / WebAssembly), el sistema delega el trabajo a una cola en segundo plano atendida por el Worker. De inmediato retorna al cliente el estado "Procesamiento en curso", con lo cual mantiene su disponibilidad y capacidad de respuesta.
+- **Acción del usuario:** Mateo sube la foto de la boleta desde su celular.
+- **Comportamiento del sistema:** El servicio `StorageService` revisa los primeros bytes del archivo (_magic bytes_) para confirmar que sea realmente una imagen JPG, PNG o WEBP válida de máximo 5 MB, calcula su hash SHA-256 para evitar que se suba dos veces la misma foto en el evento, y la guarda en disco con un identificador único (`comprobante-<uuid>.jpg`). Acto seguido, en una misma transacción SQL, crea el comprobante en estado `PROCESANDO` y encola un trabajo `PENDING` en `receipt_jobs`, respondiendo de inmediato al navegador sin bloquear la API.
 
-#### Paso 3: Extracción, Verificación y Diseño por Contratos
+#### Paso 3: Lectura OCR, Revisión Humana y Reparto con Contratos
 
-- **Acción del usuario:** al finalizar la lectura, el estado del comprobante se actualiza y Mateo puede consultar la información extraída. Mateo verifica los datos (y los corrige si es necesario) y selecciona una modalidad de división: reparto equitativo o reparto por ítems. En el reparto por ítems, además, asigna los ítems a los participantes que los consumieron.
-- **Comportamiento del sistema:** el Worker (procesador en segundo plano) ejecuta la extracción OCR aplicando los mecanismos de tolerancia a fallas descritos en la sección 9 (Circuit Breaker con Opossum, límites de tiempo de espera y reintentos controlados), garantizando que fallas de memoria o parsing en WebAssembly no desestabilicen al sistema principal. Si los reintentos se agotan, la tarea se marca con error de forma idempotente y el estado del comprobante informa la situación al usuario. La información recuperada se trata como un dato no confiable y se valida antes de presentarla al usuario. Una vez que Mateo confirma los datos y la modalidad, el motor de cálculo divide el gasto. En el reparto equitativo, el monto total se distribuye entre todos los participantes; en el reparto por ítems, la parte de cada participante se calcula según los ítems que tiene asignados. En ambos casos se aplica la regla definida para asignar los residuos de redondeo y se verifica, mediante un contrato de diseño (_Design by Contract_), que la suma de las partes asignadas sea equivalente al monto total del comprobante antes de persistir los datos.
+- **Acción del usuario:** Cuando el Worker termina de leer la imagen, la pantalla de Mateo pasa automáticamente al formulario de revisión. Mateo verifica que los platos y el total coincidan con el papel, elige el modo de reparto (equitativo o asignando qué plato comió cada uno) y confirma el reparto.
+- **Comportamiento del sistema:** El Worker reclama la tarea de `receipt_jobs` usando `FOR UPDATE SKIP LOCKED`, ejecuta el reconocimiento mediante el Circuit Breaker y pasa los datos por el parser defensivo (`recibo.parser.ts`). Al confirmar Mateo la división, `split-calculator.ts` reparte los montos en centavos aplicando el método del mayor residuo y comprueba por contrato que la suma de las cuotas sea exactamente igual a `total_cents` antes de guardar.
 
-#### Paso 4: Generación de Obligaciones (Matriz de Deuda)
+#### Paso 4: Generación de Deudas
 
-- **Acción del usuario:** Lucía y Andrés pueden consultar en el sistema que mantienen un saldo pendiente, correspondiente a su parte del gasto, a favor de Mateo. Por ejemplo, si el comprobante es de S/ 300 y se reparte de forma equitativa, cada uno debe S/ 100.
-- **Comportamiento del sistema:** se registran las deudas correspondientes en la base de datos, indicando el deudor, el acreedor y el saldo pendiente. Solo se generan deudas para los participantes distintos del pagador: la parte de Mateo no genera ninguna deuda, ya que él mismo pagó el gasto. Estos registros se convierten en el recurso crítico del sistema, sujeto a posibles actualizaciones simultáneas.
+- **Acción del usuario:** Lucía y Andrés entran a "Mis deudas" (`/deudas`) y ven cuánto le deben a Mateo (por ejemplo, S/ 100.00 cada uno si la boleta fue de S/ 300.00 en partes iguales).
+- **Comportamiento del sistema:** Se insertan las filas en `debts` solo para Lucía y Andrés (la parte de Mateo no genera deuda porque él mismo pagó la boleta). Si existieran deudas en sentido contrario dentro del mismo evento, el sistema ejecuta `compensateCrossDebts` para descontarlas mutuamente.
 
-#### Paso 5: Amortización, Evidencia y Control de Concurrencia (El núcleo transaccional)
+#### Paso 5: Registro de Pagos y Control de Concurrencia
 
-- **Acción del usuario:** Andrés realiza su pago de S/ 100 fuera de la aplicación (mediante Yape) y lo registra en SplitVision adjuntando la captura de su comprobante. Por su parte, Lucía tiene una deuda de S/ 100 y decide enviar un pago parcial de S/ 60. Debido a una conexión móvil inestable (*lag* de red 4G/Wi-Fi), Lucía presiona repetidamente el botón de envío o su cliente HTTP reintenta la solicitud, disparando dos peticiones casi simultáneas (una de S/ 60 y otra de S/ 70 que intenta registrar enseguida).
-- **Comportamiento del sistema:** Para resolver este escenario crítico sin corromper el saldo, el motor transaccional aplica dos barreras defensivas:
-  1. **Serialización mediante bloqueo pesimista a nivel de fila (`SELECT ... FOR UPDATE`):** La base de datos no procesa las dos peticiones a la vez de forma desordenada; forma una cola estricta y procesa las peticiones **una por una**. La primera solicitud adquiere el bloqueo exclusivo sobre el registro de la deuda, mientras que la segunda espera a que la primera concluya. La primera solicitud evalúa que S/ 60 $\le$ S/ 100 disponible, registra el pago en estado `PENDIENTE`, incrementa el saldo reservado a S/ 60 (`reserved_cents = 6000`), reduce el saldo disponible a S/ 40 y libera el bloqueo haciendo *commit*. Al ejecutarse a continuación, la segunda solicitud adquiere el bloqueo y evalúa sus precondiciones contra el *nuevo saldo disponible* (S/ 40); al requerir S/ 70, incumple la precondición y es rechazada limpiamente con un error 409 (*Conflict*), impidiendo la sobreescritura (*Lost Update*) y evitando que el saldo se vuelva negativo.
-  2. **Control de duplicados por Idempotencia (`Idempotency-Key`):** Si la segunda solicitud corresponde a un reintento del mismo pago de S/ 60 con la misma llave de idempotencia enviada por el frontend, el sistema detecta la colisión mediante una restricción única en base de datos y retorna el pago ya registrado sin duplicar la reserva de saldo.
+- **Acción del usuario:** Andrés le yapea S/ 100.00 a Mateo copiando su número desde la pantalla de pago (`/deudas/:id/pago`) y sube la captura del voucher. Por su lado, Lucía quiere hacer un abono parcial de S/ 60.00 sobre sus S/ 100.00, pero por mala señal móvil se disparan dos peticiones casi al mismo tiempo (o intenta mandar un pago de S/ 60.00 y otro de S/ 70.00 seguidos).
+- **Comportamiento del sistema:** El backend protege el saldo con dos mecanismos:
+  1. **Bloqueo pesimista (`SELECT ... FOR UPDATE`):** La base de datos pone en fila las peticiones que tocan la deuda de Lucía. La primera toma el bloqueo, verifica que S/ 60.00 $\le$ S/ 100.00 disponibles, crea el pago en estado `PENDIENTE`, sube `reserved_cents` a `6000` (dejando S/ 40.00 disponibles) y hace `COMMIT`. Cuando entra la segunda petición por S/ 70.00, lee el nuevo saldo disponible de S/ 40.00; como no alcanza, se rechaza con error **HTTP 409 Conflict** sin malograr los saldos.
+  2. **Llave de idempotencia (`Idempotency-Key`):** Si las dos peticiones eran el mismo envío repetido con el mismo UUID en la cabecera `idempotency-key`, el índice único `payments_idempotent` detecta que ya se procesó y devuelve el pago existente (`existing: true`) sin volver a descontar saldo.
 
-#### Paso 6: Verificación en Bandeja de Cobros, Consolidación y Cierre
+#### Paso 6: Confirmación en Bandeja de Pagos y Cierre
 
-- **Acción del usuario:** Mateo entra a su **Bandeja de Pagos** (`/bandeja-pagos`). Observa el pago de Andrés por S/ 100 y el de Lucía por S/ 60 con sus respectivas capturas de pantalla bancarias adjuntas. Mateo inspecciona las evidencias y presiona **"Confirmar pago"** para ambos. Lucía, notificada de que su pago fue acreditado y que su saldo restante es de S/ 40, transfiere los S/ 40 finales y Mateo los confirma en su Bandeja.
-- **Comportamiento del sistema:** Al confirmar cada pago, el sistema ejecuta una transacción que actualiza el estado del pago a `CONFIRMADO` y traslada el monto desde `reserved_cents` hacia `confirmed_cents`. El saldo total pendiente de la deuda se reduce a cero. Las consultas de agregación del balance confirman que todos los saldos quedaron liquidados cumpliendo la invariante contable: para cada deuda, `confirmed_cents === amount_cents` y `available_cents === 0`.
+- **Acción del usuario:** Mateo abre su **Bandeja de Pagos** (`/bandeja/pagos`), revisa las capturas subidas por Andrés y Lucía, y presiona **"Confirmar"** en ambos pagos.
+- **Comportamiento del sistema:** Dentro de una transacción con bloqueo sobre la deuda y el pago, el estado cambia a `CONFIRMADO`, el monto se resta de `reserved_cents` y se suma a `confirmed_cents`. El balance del evento (`/eventos/:id/balance`) se actualiza al instante mostrando las cuentas al día.
 
 ### 2.5. Requisitos Funcionales (v1.0)
 
-Derivado del flujo de negocio core, el prototipo funcional a presentar en la primera etapa deberá cumplir con los siguientes requerimientos:
+#### RF1: Gestión de identidad, perfil de cobro y trazabilidad
 
-#### RF1: Gestión de identidad y trazabilidad
+- **Descripción:** El sistema permite registrar usuarios con `username` y correo únicos, iniciar sesión y configurar sus datos de cobro (billetera preferida, teléfono, cuenta bancaria/CCI y QR).
+- **Criterio de aceptación técnico:** Las contraseñas se almacenan únicamente con hash Argon2. Toda ruta protegida exige una sesión activa validada por `SessionGuard` y token CSRF en operaciones de escritura (`POST`, `PUT`, `PATCH`, `DELETE`), registrando el `user_id` y `correlation_id` en `audit_logs`.
 
-- **Descripción:** el sistema debe permitir el registro y la autenticación básica de los usuarios para actuar como actores independientes y persistentes. Durante el registro, el usuario debe establecer un username único y un correo electrónico único que permitan su identificación y búsqueda dentro del sistema.
-- **Criterio de aceptación técnico:** toda transacción (creación de evento, carga de comprobante, pago de deuda) debe estar obligatoriamente vinculada al identificador único del usuario en sesión, garantizando la trazabilidad necesaria para las operaciones transaccionales. El sistema debe rechazar registros con username o correo duplicados y no debe almacenar contraseñas en texto plano.
+#### RF2: Agrupación y límites de contexto (eventos e invitaciones)
 
-#### RF2: Agrupación y límites de contexto (eventos)
+- **Descripción:** Un usuario puede crear un evento e invitar a otros usuarios registrados buscándolos por su nombre de usuario o correo.
+- **Criterio de aceptación técnico:** Toda consulta o modificación dentro de un evento verifica primero con `assertParticipant(eventId, userId)` que el usuario pertenezca al grupo; de lo contrario, se rechaza la operación para impedir accesos no autorizados (IDOR).
 
-- **Descripción:** un usuario debe poder inicializar un Evento lógico y vincular a otros usuarios registrados mediante la búsqueda por username o correo electrónico.
-- **Criterio de aceptación técnico:** las consultas de saldos y las operaciones de escritura deben estar estrictamente aisladas al contexto del Evento. Toda operación realizada por un usuario que no pertenezca al evento debe ser rechazada, previniendo la fuga de datos o modificaciones no autorizadas.
+#### RF3: Procesamiento asíncrono de extracción OCR
 
-#### RF3: Procesamiento asíncrono de extracción (resiliencia y rendimiento)
-
-- **Descripción:** el sistema debe permitir la recepción de imágenes de comprobantes y delegar a un proceso Worker especializado (OCR local con Tesseract.js / WebAssembly) la extracción de su información relevante, incluyendo el monto total y los ítems cuando estén disponibles. Asimismo, debe informar al cliente sobre el estado del proceso.
-- **Criterio de aceptación técnico (SW707):** el procesamiento debe ejecutarse obligatoriamente en segundo plano desacoplado de la API principal para no degradar el *Event Loop*. La tarea se gestiona mediante una cola persistida en PostgreSQL. Si el procesamiento experimenta demoras o errores de parsing, el sistema principal mantiene su disponibilidad y aplica reintentos controlados con idempotencia para no generar comprobantes duplicados.
+- **Descripción:** El sistema recibe fotos de comprobantes, las encola para que el Worker extraiga el total y los ítems en segundo plano, e informa el estado (`PROCESANDO`, `EXTRAÍDO`, `FALLIDO`, `CONFIRMADO`).
+- **Criterio de aceptación técnico (SW707):** La lectura OCR corre fuera del proceso de la API usando la cola transaccional `receipt_jobs`. Si el OCR falla, el usuario cuenta con reintento manual y con un flujo de ingreso manual de respaldo.
 
 #### RF4: Motor de fraccionamiento y generación de deuda (contratos)
 
-- **Descripción:** a partir del monto total del comprobante, verificado por el usuario, el sistema calcula la parte que corresponde a cada participante según la modalidad de reparto seleccionada: reparto equitativo o reparto por ítems. En el reparto equitativo, el monto se divide entre los participantes; en el reparto por ítems, la parte de cada participante se determina según los ítems que tenga asignados. Las deudas se generan a favor del pagador para los participantes distintos de él.
-- **Criterio de aceptación técnico (SW707):** el algoritmo de división debe implementar programación por contratos (_Design by Contract_). Se debe evaluar la invariante de que la suma de las partes asignadas a todos los participantes (incluido el pagador) sea matemáticamente equivalente al monto total del comprobante antes de persistir los datos en el motor relacional.
+- **Descripción:** Con los datos del comprobante revisados por el pagador, el sistema divide el gasto en partes iguales (`EQUITATIVE`) o por unidades consumidas (`BY_ITEM`) y crea las deudas hacia el pagador.
+- **Criterio de aceptación técnico (SW707):** El calculador verifica por precondición que los ítems y cargos cuadren con el total, y por postcondición que la suma de las cuotas en centavos sea idéntica a `total_cents`.
 
-#### RF5: Amortización, evidencia y control transaccional (concurrencia y resiliencia)
+#### RF5: Amortización, evidencia y control transaccional (concurrencia)
 
-- **Descripción:** los usuarios deben poder amortizar deudas activas registrando pagos parciales o totales y adjuntando obligatoriamente el comprobante gráfico (voucher de Yape, Plin o transferencia bancaria). El pago ingresa en estado `PENDIENTE` reservando saldo temporalmente, y queda disponible en la Bandeja del acreedor para ser confirmado o rechazado. Asimismo, el deudor puede cancelar un pago que aún se encuentre pendiente.
-- **Criterio de aceptación técnico (SW707):** el sistema debe garantizar la integridad referencial y matemática bajo estrés concurrente:
-  1. Si múltiples solicitudes de pago o resolución llegan de manera simultánea sobre la misma deuda (ej. *double-submit*, amortizaciones concurrentes o cancelación simultánea a una confirmación), el sistema debe serializarlas **una por una** aplicando bloqueos pesimistas a nivel de fila (`SELECT ... FOR UPDATE`), previniendo actualizaciones perdidas (*Lost Update*).
-  2. Las precondiciones del pago (monto mayor a cero y menor o igual al saldo disponible vigente) deben evaluarse únicamente tras adquirir el bloqueo de fila. Toda solicitud que las incumpla debe rechazarse con código HTTP 409 (*Conflict*) sin alterar los saldos.
-  3. Cada solicitud de pago debe incluir un identificador de idempotencia único (`Idempotency-Key`). Reenvíos idénticos no deben crear pagos duplicados ni descontar doble saldo.
-  4. La evidencia gráfica debe validarse defensivamente (tamaño $\le$ 5 MB y tipo MIME permitido) y almacenarse con hash verificable.
+- **Descripción:** Los deudores registran pagos parciales o totales adjuntando evidencia gráfica (obligatoria para medios digitales), los cuales quedan pendientes hasta que el acreedor los confirme o rechace en su bandeja.
+- **Criterio de aceptación técnico (SW707):**
+  1. Toda operación sobre deudas y pagos bloquea las filas involucradas con `SELECT ... FOR UPDATE` para ejecutarse de manera secuencial y evitar _Lost Updates_.
+  2. Si el monto supera el saldo disponible al momento de adquirir el bloqueo, se rechaza con HTTP 409 (`CONFLICT`).
+  3. Se exige `Idempotency-Key` para evitar pagos duplicados ante reintentos de red.
+  4. Las imágenes se validan por tamaño ($\le$ 5 MB) y _magic bytes_ reales antes de abrir la transacción en base de datos.
 
-#### RF6: Consulta de deudas y balance del evento
+#### RF6: Consulta de deudas, compensación y balance del evento
 
-- **Descripción:** los participantes de un evento deben poder consultar sus deudas, sus pagos y el balance general del evento.
-- **Criterio de aceptación técnico:** los saldos mostrados deben ser consistentes con la matriz de deudas: para cada deuda, los pagos registrados más el saldo pendiente deben equivaler al monto total. La consulta solo debe estar disponible para los miembros del evento.
+- **Descripción:** Los participantes consultan lo que deben, lo que les deben, el detalle de compensaciones mutuas y la tabla de balance general del evento.
+- **Criterio de aceptación técnico:** Los saldos mostrados respetan en todo momento la ecuación contable de la matriz de deudas y solo son accesibles para miembros del evento.
 
 #### Trazabilidad entre requisitos y técnicas del curso
 
-| Requisito | Técnica principal                                     | Sección |
-| --------- | ----------------------------------------------------- | ------- |
-| RF1       | Programación defensiva, manejo de errores             | 6.2, 7  |
-| RF2       | Programación defensiva (autorización por evento)      | 6.2     |
-| RF3       | Tolerancia a fallas, análisis de problemas de runtime | 5, 9    |
-| RF4       | _Design by Contract_                                  | 5, 6.1  |
-| RF5       | Concurrencia y control transaccional                  | 8       |
-| RF6       | _Design by Contract_ (invariantes), pruebas           | 6.1, 10 |
+| Requisito | Técnica principal                                         | Sección |
+| :-------: | :-------------------------------------------------------- | :-----: |
+|    RF1    | Programación defensiva, manejo de errores y sesiones      | 6.2, 7  |
+|    RF2    | Programación defensiva (aislamiento por evento)           |   6.2   |
+|    RF3    | Tolerancia a fallas, análisis de problemas de runtime     |  5, 9   |
+|    RF4    | _Design by Contract_ y conservación de centavos           | 5, 6.1  |
+|    RF5    | Concurrencia, bloqueo pesimista e idempotencia            |    8    |
+|    RF6    | _Design by Contract_ (invariantes), pruebas automatizadas | 6.1, 10 |
 
 ### 2.6. Requisitos no funcionales (v1.0)
 
-- **RNF1. Consistencia e integridad:** los saldos deben cumplir las invariantes del dominio (sección 2.2.E) aun bajo operaciones concurrentes.
-- **RNF2. Disponibilidad ante fallas externas:** el sistema debe responder a las solicitudes de los usuarios sin esperar al servicio OCR, y una falla de este servicio no debe afectar al resto de las operaciones.
-- **RNF3. Seguridad básica:** las contraseñas deben almacenarse de forma cifrada y cada operación debe validar la pertenencia del usuario al evento.
-- **RNF4. Trazabilidad:** toda operación relevante debe registrarse con el usuario que la realizó y dejar evidencia en los registros (_logs_) del sistema.
-- **RNF5. Verificabilidad:** los escenarios críticos, en especial el escenario concurrente, deben poder reproducirse mediante pruebas automatizadas.
+- **RNF1. Consistencia e integridad:** Los saldos de todas las deudas cumplen siempre la invariante `confirmed_cents + reserved_cents <= amount_cents`, incluso bajo peticiones simultáneas.
+- **RNF2. Disponibilidad ante fallas del OCR:** La API responde en milisegundos al subir un comprobante sin quedarse esperando al OCR, y si la lectura falla el usuario puede completarla manualmente sin bloquear el evento.
+- **RNF3. Seguridad defensiva:** Contraseñas con Argon2, bloqueo temporal tras 5 intentos fallidos de login, cookies `httpOnly` + token CSRF, validación binaria de imágenes (_magic bytes_) y verificación de pertenencia al evento en cada endpoint.
+- **RNF4. Trazabilidad:** Propagación de `correlationId` con `AsyncLocalStorage` en logs estructurados JSON y registro de acciones críticas en la tabla `audit_logs`.
+- **RNF5. Verificabilidad:** Pruebas automatizadas unitarias, de propiedades con `fast-check`, de componentes en Vitest y de concurrencia/integración contra PostgreSQL real con Testcontainers.
+
+---
 
 ## 3. Arquitectura y decisiones técnicas
 
 ### 3.1. Vista general de la arquitectura
 
-SplitVision utiliza una arquitectura de monolito modular, compuesta por una aplicación web SPA desarrollada en React y un backend dividido en dos procesos: API y Worker. Ambos comparten el código del sistema y una base de datos PostgreSQL.
+SplitVision está construido bajo una arquitectura de **monolito modular** compuesta por tres piezas principales que comparten el mismo repositorio: una aplicación web SPA en React (`/App/frontend`), un servidor API REST en NestJS (`src/main.ts`) y un proceso Worker en segundo plano (`src/worker.ts`), respaldados por una base de datos PostgreSQL y almacenamiento local de imágenes.
 
-La API atiende las solicitudes de la aplicación y gestiona las operaciones principales del sistema. El Worker ejecuta tareas que pueden procesarse de manera asíncrona, principalmente el procesamiento OCR de los comprobantes.
-
-De esta manera, el sistema mantiene una estructura centralizada para las operaciones transaccionales, mientras que las tareas de procesamiento intensivo se ejecutan independientemente del flujo principal de las solicitudes.
+La API atiende todas las peticiones HTTP de los usuarios y ejecuta las transacciones financieras sobre la base de datos, mientras que el Worker se dedica exclusivamente a desencolar y procesar las imágenes de los comprobantes con el motor OCR.
 
 ### 3.2 C4 Nivel 1 – Diagrama de contexto
 
@@ -306,65 +315,60 @@ De esta manera, el sistema mantiene una estructura centralizada para las operaci
 
 ### 3.5. Tecnologías utilizadas
 
-El sistema SplitVision utiliza el siguiente stack tecnológico:
-
 #### 3.5.1. Frontend (`/App/frontend`)
 
-| Tecnología | Propósito |
-| :--- | :--- |
-| React (v19) | Construcción de la interfaz de usuario componentizada y reactiva |
-| TypeScript (v5.9) | Desarrollo con tipado estático estricto en toda la capa de presentación |
-| Vite (v8) | Herramienta de construcción, empaquetado y servidor de desarrollo HMR ultrarrápido |
-| React Router DOM (v7) | Gestión declarativa de rutas y navegación cliente |
-| TanStack Query (v5) | Gestión de estado asíncrono, cacheo y sincronización de datos con la API |
-| Tailwind CSS (v4) | Framework de utilidades CSS para diseño responsive y consistente |
+| Tecnología            | Propósito                                                                           |
+| :-------------------- | :---------------------------------------------------------------------------------- |
+| React (v19)           | Construcción de las vistas y componentes interactivos de la interfaz                |
+| TypeScript (v5.9)     | Tipado estático de respuestas de API, estados y propiedades                         |
+| Vite (v8)             | Empaquetador y servidor de desarrollo rápido                                        |
+| React Router DOM (v7) | Navegación entre páginas y protección de rutas (`RutaProtegida` / `RutaPublica`)    |
+| TanStack Query (v5)   | Sincronización con el backend, caché y _polling_ automático de estados OCR y saldos |
+| Tailwind CSS (v4)     | Sistema de diseño "Ledger" con variables CSS en OKLCH y soporte para modo oscuro    |
 
 #### 3.5.2. Backend (`/App`)
 
-| Tecnología | Propósito |
-| :--- | :--- |
-| Node.js (v22+) | Runtime del backend con soporte de variables de entorno nativas (`--env-file`) |
-| NestJS (v11) | Framework backend modular con inyección de dependencias, DTOs y filtros globales |
-| TypeORM & `pg` | Mapeo relacional y ejecución de consultas transaccionales con bloqueo pesimista (`FOR UPDATE`) |
-| PostgreSQL 16/18 | Base de datos relacional y soporte de colas transaccionales |
-| Tesseract.js (v7) | Motor OCR local en WebAssembly/C++ ejecutado en proceso Worker desacoplado |
-| Opossum | Implementación del patrón *Circuit Breaker* para tolerancia a fallas |
-| `@node-rs/argon2` | Hashing criptográfico de contraseñas de alta resistencia (ganador PHC) |
-| `class-validator` / `class-transformer` | Validación defensiva estricta de DTOs en el límite de la API |
-| Multer | Procesamiento defensivo de subida de archivos (MIME, tamaño y buffers) |
+| Tecnología        | Propósito                                                                                                                                 |
+| :---------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| Node.js (v22+)    | Entorno de ejecución para los procesos de la API y del Worker                                                                             |
+| NestJS (v11)      | Estructura modular (`identidad`, `eventos`, `comprobantes`, `reparto`, `pagos`, `consultas`, `ocr`), guardias e inyección de dependencias |
+| TypeORM & `pg`    | Conexión a PostgreSQL, manejo de transacciones explícitas (`withTx`) y consultas SQL parametrizadas con bloqueo pesimista                 |
+| PostgreSQL 16/18  | Base de datos relacional transaccional y soporte de la cola de trabajos `receipt_jobs`                                                    |
+| Tesseract.js (v7) | Motor OCR local en WebAssembly ejecutado dentro del Worker                                                                                |
+| Opossum           | Circuit Breaker (`crearOcrBreaker`) para proteger la extracción OCR y activar el fallback local                                           |
+| `@node-rs/argon2` | Hashing seguro de contraseñas                                                                                                             |
+| Multer            | Recepción de archivos en memoria (`FileInterceptor`) previo a la validación de _magic bytes_ en `StorageService`                          |
 
 #### 3.5.3. Pruebas y verificación
 
-| Tecnología | Propósito |
-| :--- | :--- |
-| Jest & `ts-jest` | Ejecución de pruebas unitarias y de integración en el backend |
-| Vitest (v5) | Motor de pruebas ultrarrápido para el frontend en React |
-| `fast-check` | *Property-Based Testing* para verificación formal de invariantes matemáticas (1,000 iteraciones) |
-| Testcontainers | Orquestación de contenedores Docker efímeros de PostgreSQL para pruebas reproducibles |
-| React Testing Library | Pruebas de integración de interfaz de usuario guiadas por comportamiento |
+| Tecnología            | Propósito                                                                                       |
+| :-------------------- | :---------------------------------------------------------------------------------------------- |
+| Jest & `ts-jest`      | Pruebas unitarias, de integración y de concurrencia en el backend                               |
+| Vitest (v5)           | Pruebas de componentes y flujos en el frontend                                                  |
+| `fast-check`          | _Property-Based Testing_ para comprobar las invariantes del cálculo de reparto (1,000 corridas) |
+| Testcontainers        | Contenedores PostgreSQL reales levantados automáticamente durante los tests                     |
+| React Testing Library | Pruebas de interfaz simulando la interacción real del usuario                                   |
 
 #### 3.5.4. Infraestructura
 
-| Tecnología | Propósito |
-| :--- | :--- |
-| Docker & Docker Compose | Contenerización de servicios auxiliares y base de datos relacional |
-| Monorepo estructurado | Separación limpia entre API (`/App`), Worker (`/App/dist/worker.js`) y SPA (`/App/frontend`) |
+| Tecnología              | Propósito                                                       |
+| :---------------------- | :-------------------------------------------------------------- |
+| Docker & Docker Compose | Contenerización de PostgreSQL, API y Worker                     |
+| Monorepo estructurado   | Código unificado con backend en `/App` y SPA en `/App/frontend` |
 
 ### 3.6 Decisiones técnicas
 
-Las principales decisiones técnicas adoptadas para el desarrollo de SplitVision son:
-
 #### 3.6.1 Arquitectura monolítica modular
 
-Se optó por una arquitectura monolítica modular para mantener centralizadas las reglas de negocio y facilitar el desarrollo del prototipo, evitando la complejidad operacional y de red de microservicios prematuros.
+Elegimos un monolito modular en NestJS dividido por dominios de negocio (`identidad`, `eventos`, `comprobantes`, `reparto`, `pagos`, `consultas` y `ocr`). Esto nos permite tener transacciones SQL directas entre módulos sin la complejidad de red que implicaría separar microservicios para un equipo de 3 personas.
 
-#### 3.6.2 Procesamiento OCR mediante un Worker desacoplado
+#### 3.6.2 Procesamiento OCR en un proceso Worker separado
 
-El procesamiento de comprobantes se separó de la API mediante un Worker independiente y una cola de tareas persistida. Esto permite ejecutar la extracción OCR (intensiva en CPU y memoria WebAssembly) sin degradar el *Event Loop* de la API web, aislando fallas o demoras del flujo transaccional.
+La lectura de imágenes se separó en un ejecutable independiente (`worker.ts`) para que el consumo pesado de CPU y memoria de Tesseract.js nunca afecte el tiempo de respuesta de la API web.
 
-#### 3.6.3 PostgreSQL y cola transaccional nativa (`receipt_jobs` con `FOR UPDATE SKIP LOCKED`)
+#### 3.6.3 Cola transaccional sobre PostgreSQL (`receipt_jobs` con `FOR UPDATE SKIP LOCKED`)
 
-En lugar de incorporar intermediarios adicionales como Redis, RabbitMQ o librerías pesadas como `pg-boss`, el sistema implementa un patrón de cola de tareas transaccional directamente sobre PostgreSQL mediante la tabla `receipt_jobs`. La asignación atómica de trabajos utiliza:
+En vez de instalar servicios adicionales como Redis o RabbitMQ, implementamos la cola de trabajos directamente en PostgreSQL con la tabla `receipt_jobs`. Para que un Worker tome una tarea disponible o recupere una tarea cuyo tiempo de arriendo (_lease_) expiró, ejecuta:
 
 ```sql
 SELECT id FROM receipt_jobs
@@ -375,296 +379,427 @@ FOR UPDATE SKIP LOCKED
 LIMIT 1
 ```
 
-Este enfoque ofrece ventajas técnicas contundentes:
-1. **Cero contención entre workers:** `SKIP LOCKED` permite que múltiples procesos tomen tareas concurrentemente sin bloquearse entre sí.
-2. **Consistencia ACID unificada:** La creación del comprobante y el encolamiento de su procesamiento se ejecutan en la misma transacción de base de datos; es imposible que exista un comprobante huérfano sin tarea asociada.
-3. **Recuperación automática de fallos:** Si un worker muere inesperadamente mientras procesa una imagen, el vencimiento de su arriendo temporal (`lease_expires_at < now()`) permite que otro worker reclame y reintente el trabajo sin intervención humana.
+Esto nos da tres ventajas claras:
 
-#### 3.6.4 Control de concurrencia y serialización en pagos
+1. **Sin choques entre workers:** `SKIP LOCKED` hace que si hay varios workers corriendo, cada uno tome una boleta distinta sin bloquearse.
+2. **Atomicidad:** El comprobante y su trabajo OCR se insertan en la misma transacción (`withTx`), por lo que nunca queda una boleta subida sin su tarea en cola.
+3. **Recuperación ante caídas:** Si el Worker se apaga a mitad de una lectura, cuando vence `lease_expires_at` la tarea vuelve a ser tomada automáticamente.
 
-Los pagos se procesan mediante transacciones explícitas con bloqueo pesimista a nivel de fila (`SELECT ... FOR UPDATE`) sobre la deuda objetivo. Esto serializa estrictamente las solicitudes concurrentes, previniendo actualizaciones perdidas (*Lost Update*) y garantizando que el saldo reservado más el confirmado nunca excedan el monto total adeudado.
+#### 3.6.4 Bloqueo pesimista y compensación de deudas cruzadas
 
-#### 3.6.5 Patrón Adapter para el OCR y desacoplamiento
+Tanto el registro y resolución de pagos como la compensación automática de deudas mutuas (`compensateCrossDebts`) usan transacciones con `SELECT ... FOR UPDATE` sobre las filas de `debts`. Así aseguramos que dos operaciones concurrentes jamás modifiquen los saldos al mismo tiempo.
 
-Se definió una interfaz `OcrProvider` que desacopla el procesamiento de comprobantes de la implementación específica del OCR. Actualmente permite utilizar `TesseractOcrProvider` (OCR local WebAssembly) y `MockOcrProvider` (para pruebas automatizadas deterministas), dejando abierta la arquitectura para incorporar un adaptador hacia servicios en la nube (`CloudOcrProvider`) en una etapa futura sin modificar el flujo de negocio.
+#### 3.6.5 Patrón Adapter y Circuit Breaker en el subsistema OCR
 
-#### 3.6.6 Validación y verificación del resultado OCR como dato no confiable
+Mediante la interfaz `OcrClient` (`ocr.client.ts`) y el Circuit Breaker de `breaker.ts`, el Worker desacopla quién hace el reconocimiento óptico. Permite usar un proveedor externo (`HttpOcrClient`) protegido por `opossum` que salta automáticamente al motor local (`TesseractOcrClient`) si el servicio externo demora o cae, además de contar con `FakeOcrClient` para inyectar fallas controladas durante los tests.
 
-Los datos obtenidos mediante OCR se tratan formalmente como información no confiable (datos probabilísticos susceptibles a errores de iluminación o tipografía). Por ello, el sistema exige un paso intermedio donde el usuario verifica y corrige los montos e ítems antes de proceder a la división de gastos y generación formal de deudas.
+#### 3.6.6 Verificación humana obligatoria del resultado OCR
 
-#### 3.6.7 Separación entre frontend y API
-
-Se separó la interfaz web desarrollada en React de la lógica del backend mediante una API REST bien delimitada. Esto permite mantener responsabilidades diferenciadas entre la presentación, las reglas de negocio y el acceso a datos.
+Como ninguna lectura óptica de un ticket arrugado es 100% segura, el sistema nunca crea deudas directamente desde el OCR: siempre deja el comprobante en estado `EXTRAÍDO` para que el pagador revise los ítems y confirme los montos antes de pasar al reparto.
 
 ### 3.7 Modelo de datos
 
-El modelo de datos representa las principales entidades del dominio de SplitVision y sus relaciones, incluyendo usuarios, eventos, comprobantes, ítems, deudas y pagos. Este modelo permite mantener la trazabilidad completa desde la carga del comprobante hasta la liquidación final de saldos con evidencia.
+El diagrama Entidad-Relación refleja las tablas creadas por el motor de migraciones (`src/db/migrate.ts`), garantizando la integridad referencial desde que se crea el evento hasta que se audita cada pago.
 
 ![Entidad Relación](assets/modelo-datos/relacion.png)
 
+---
+
 ## 4. Dependencias y reúso
 
-La gestión de dependencias en SplitVision se rige por el principio de **responsabilidad técnica y minimización de superficie de ataque**: se reutilizan librerías consolidadas únicamente cuando resuelven problemas complejos no diferenciadores (criptografía, concurrencia en BD, frameworks de testing), mientras que la lógica transaccional, financiera y de sincronización es de diseño propio.
+Para gestionar las dependencias seguimos una regla clara: **usar librerías probadas para tareas de infraestructura o seguridad (como criptografía, conexión a base de datos o circuit breaker), y programar nosotros mismos toda la lógica del negocio (cálculos en centavos, reparto de residuos, cola SQL y control de concurrencia)**.
 
 ### 4.1 Gestión de dependencias directas
 
-El proyecto está estructurado con separación limpia entre el backend transaccional (`/App`) y el frontend cliente (`/App/frontend`), cada uno con su correspondiente manifiesto `package.json` y bloqueo determinista de versiones (`package-lock.json`).
+Tanto el backend (`/App`) como el frontend (`/App/frontend`) mantienen sus versiones fijadas con `package-lock.json` para asegurar que todo el equipo y el entorno Docker instalen exactamente los mismos paquetes.
 
 #### 4.1.1 Dependencias directas del Backend (`/App`)
 
-| Paquete | Versión | Tipo | Justificación técnica | Licencia |
-| :--- | :--- | :--- | :--- | :--- |
-| `@nestjs/core`, `@nestjs/common` | `^11.0.0` | Prod | Inyección de dependencias modular, middleware, pipes de validación y filtros globales de excepciones. | MIT |
-| `@nestjs/typeorm`, `typeorm` | `^11.0.0`, `^0.3.20` | Prod | Abstracción de acceso a datos relacional y soporte de transacciones nativas (`withTx`) con bloqueos de fila. | MIT |
-| `pg` | `^8.13.0` | Prod | Driver oficial de PostgreSQL de alto rendimiento con gestión de pool de conexiones (`Pool`). | MIT |
-| `@node-rs/argon2` | `^2.0.2` | Prod | Hashing criptográfico de contraseñas de última generación (ganador del Password Hashing Competition), inmune a ataques acelerados por GPU/ASIC. | MIT |
-| `tesseract.js` | `^7.0.0` | Prod | Motor OCR local compilado a WebAssembly para extracción de texto sin dependencias binarias externas en el SO ni costos cloud. | Apache-2.0 |
-| `opossum` | `^8.0.1` | Prod | Implementación de nivel de producción del patrón *Circuit Breaker* para aislar fallos del motor OCR y evitar saturación del proceso. | Apache-2.0 |
-| `class-validator`, `class-transformer` | `^0.14.1`, `^0.5.1` | Prod | Validación defensiva declarativa basada en decoradores para sanitizar y restringir los DTOs de entrada HTTP. | MIT |
-| `fast-check` | `^3.23.0` | Dev | Framework de *Property-Based Testing* para verificación formal de invariantes matemáticas en el reparto financiero. | MIT |
-| `testcontainers` | `^12.2.1` | Dev | Orquestación de instancias efímeras de PostgreSQL en Docker para pruebas de integración deterministas y aisladas. | MIT |
-| `jest`, `ts-jest` | `^30.5.2`, `^29.4.14` | Dev | Suite de pruebas unitarias, mocking y cálculo de cobertura de código. | MIT |
+| Paquete                                                      | Versión               | Tipo | Justificación técnica                                                                                                                                       | Licencia   |
+| :----------------------------------------------------------- | :-------------------- | :--- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------- |
+| `@nestjs/core`, `@nestjs/common`, `@nestjs/platform-express` | `^11.0.0`             | Prod | Estructura modular del servidor HTTP, guardias de sesión (`SessionGuard`), interceptores de archivos y filtro global de excepciones (`AppExceptionFilter`). | MIT        |
+| `@nestjs/typeorm`, `typeorm`                                 | `^11.0.0`, `^0.3.20`  | Prod | Mapeo de entidades y manejo del `QueryRunner` para transacciones explícitas (`withTx`).                                                                     | MIT        |
+| `pg`                                                         | `^8.13.0`             | Prod | Driver oficial de PostgreSQL para el pool de conexiones y la ejecución de migraciones con bloqueo consultivo (`pg_advisory_lock`).                          | MIT        |
+| `@node-rs/argon2`                                            | `^2.0.2`              | Prod | Hashing seguro de contraseñas en código nativo Rust, resistente a ataques por fuerza bruta con GPU.                                                         | MIT        |
+| `tesseract.js`                                               | `^7.0.0`              | Prod | Motor OCR local en WebAssembly para leer boletas en español sin depender de servicios de pago en la nube.                                                   | Apache-2.0 |
+| `opossum`                                                    | `^8.0.1`              | Prod | Implementación del patrón _Circuit Breaker_ para cortar llamadas colgadas al OCR y activar el fallback local.                                               | Apache-2.0 |
+| `fast-check`                                                 | `^3.23.0`             | Dev  | Generador de casos aleatorios (_Property-Based Testing_) para poner a prueba las invariantes del motor de división de gastos.                               | MIT        |
+| `testcontainers`                                             | `^12.2.1`             | Dev  | Levanta contenedores temporales de PostgreSQL en Docker para correr las pruebas de integración y concurrencia sobre una BD real.                            | MIT        |
+| `jest`, `ts-jest`                                            | `^30.5.2`, `^29.4.14` | Dev  | Ejecución de pruebas automatizadas del backend.                                                                                                             | MIT        |
 
 #### 4.1.2 Dependencias directas del Frontend (`/App/frontend`)
 
-| Paquete | Versión | Tipo | Justificación técnica | Licencia |
-| :--- | :--- | :--- | :--- | :--- |
-| `react`, `react-dom` | `^19.3.0` | Prod | Núcleo de componentes declarativos, concurrencia y hooks de estado para la interfaz SPA. | MIT |
-| `react-router-dom` | `^7.18.4` | Prod | Enrutamiento cliente declarativo con protección de rutas privadas y gestión de historial. | MIT |
-| `@tanstack/react-query` | `^5.104.1` | Prod | Capa de sincronización y cacheo de datos del servidor con revalidación en segundo plano y manejo de mutaciones. | MIT |
-| `tailwindcss`, `@tailwindcss/vite` | `^4.3.3` | Dev/Prod | Framework CSS atómico optimizado con compilación nativa en Vite para tiempos de carga mínimos. | MIT |
-| `vitest` | `^5.0.3` | Dev | Motor de pruebas ultrarrápido compatible con Vite para pruebas de componentes y lógica frontend. | MIT |
-| `@testing-library/react` | `^16.3.3` | Dev | Pruebas de integración de UI centradas en la perspectiva y experiencia del usuario real. | MIT |
+| Paquete                            | Versión             | Tipo     | Justificación técnica                                                                | Licencia |
+| :--------------------------------- | :------------------ | :------- | :----------------------------------------------------------------------------------- | :------- |
+| `react`, `react-dom`               | `^19.3.0`           | Prod     | Construcción de componentes y manejo de estado de la interfaz web.                   | MIT      |
+| `react-router-dom`                 | `^7.18.4`           | Prod     | Enrutamiento declarativo entre las vistas de la SPA.                                 | MIT      |
+| `@tanstack/react-query`            | `^5.104.1`          | Prod     | Manejo de peticiones al backend, caché e invalidación automática tras cada mutación. | MIT      |
+| `tailwindcss`, `@tailwindcss/vite` | `^4.3.3`            | Dev/Prod | Estilos CSS basados en utilidades y variables de tema claro/oscuro.                  | MIT      |
+| `vitest`, `@testing-library/react` | `^5.0.3`, `^16.3.3` | Dev      | Pruebas automatizadas de los componentes y páginas en React.                         | MIT      |
 
 ### 4.2 Análisis de dependencias transitivas y riesgos de seguridad
 
-El análisis de seguridad del árbol de dependencias se ejecutó mediante auditorías automatizadas con `npm audit` tanto en el backend como en el frontend.
+Revisamos el árbol completo de paquetes instalados ejecutando `npm audit` tanto en el backend como en el frontend.
 
 #### 4.2.1 Estado de vulnerabilidades (Auditoría v1.0)
 
-A la fecha de cierre de la versión v1.0, el reporte cuantitativo arrojado por el motor de análisis de vulnerabilidades es el siguiente:
+- **Backend (`/App`):** `found 0 vulnerabilities` en los 571 paquetes del árbol de dependencias.
+- **Frontend (`/App/frontend`):** `found 0 vulnerabilities` en los 695 paquetes instalados.
 
-- **Backend (`/App`):** `found 0 vulnerabilities` (0 críticas, 0 altas, 0 moderadas, 0 bajas en el árbol completo de 643 paquetes).
-- **Frontend (`/App/frontend`):** `found 0 vulnerabilities` (0 vulnerabilidades reportadas en el árbol completo de dependencias de desarrollo y producción).
+#### 4.2.2 Medidas de control sobre dependencias transitivas
 
-#### 4.2.2 Estrategias de mitigación de riesgos de suministro (*Supply Chain*)
-
-1. **Bloqueo determinista de dependencias:** Los archivos `package-lock.json` están estrictamente versionados en el repositorio Git. Esto garantiza que las instalaciones automáticas o despliegues de CI/CD ejecuten `npm ci` descargando árboles de dependencias binariamente idénticos, evitando modificaciones no autorizadas o discrepancias entre entornos.
-2. **Resolución forzada de dependencias transitivas (`overrides`):** Para mitigar proactivamente riesgos de paquetes transitivos desactualizados, se configuró la sección `overrides` en el `package.json` principal:
+1. **Instalaciones reproducibles (`package-lock.json`):** Versionamos los archivos lock en Git para que `npm ci` instale exactamente las mismas sub-dependencias en cualquier máquina.
+2. **Parcheo forzado con `overrides`:** Para no depender de que librerías de terceros actualicen sus propias dependencias internas, forzamos en el `package.json` versiones seguras de paquetes transitivos como `js-yaml`:
    ```json
    "overrides": {
      "js-yaml": "^4.1.0"
    }
    ```
-   Esta regla fuerza al gestor de paquetes a reemplazar cualquier versión transitiva vulnerable de `js-yaml` por una versión parcheada y segura, sin requerir esperar a que los mantenedores de librerías intermedias publiquen nuevas versiones.
-3. **Aislamiento de tareas de alto riesgo:** El motor OCR (`tesseract.js`) involucra la ejecución de binarios WebAssembly. Al alojarlo en el proceso Worker desacoplado, cualquier potencial vulnerabilidad de desbordamiento de memoria o denegación de servicio (*DoS*) queda contenida en dicho proceso y no compromete el proceso de la API web ni la base de datos transaccional.
+3. **Aislamiento del binario WebAssembly:** Como `tesseract.js` ejecuta código complejo compilado en WebAssembly, lo mantuvimos aislado dentro del proceso Worker; así cualquier fallo interno al procesar una imagen pesada no afecta al servidor de la API.
 
 ### 4.3 Criterio de reúso frente a desarrollo propio
 
-En cumplimiento de los principios de diseño de SW707, el equipo evaluó críticamente la frontera entre componentes de terceros y lógica propia:
-
-| Componente | Decisión | Justificación técnica |
-| :--- | :--- | :--- |
-| **Criptografía de contraseñas** | **Reúso:** `@node-rs/argon2` | Implementar un algoritmo propio de cifrado de contraseñas es una mala práctica de seguridad crítica. Argon2 es el estándar mundial y su implementación nativa garantiza resistencia ante fuerza bruta. |
-| **Resiliencia (Circuit Breaker)** | **Reúso:** `opossum` | Reutiliza una máquina de estados de Circuit Breaker (`CLOSED`, `OPEN`, `HALF-OPEN`) auditada y probada en miles de sistemas en producción. |
-| **Cola de trabajos asíncronos** | **Desarrollo propio:** `receipt_jobs` con `FOR UPDATE SKIP LOCKED` | Se descartó `pg-boss` o Redis por introducir sobrecarga operacional excesiva para el alcance v1.0. La implementación propia en SQL nativo garantiza atomicidad transaccional directa con la tabla de comprobantes y cero dependencias de brokers externos. |
-| **Algoritmo de división financiera** | **Desarrollo propio:** `split-calculator.ts` | La regla de redondeo contable e indivisibilidad del céntimo peruano (S/ 0.01) exige una política determinista y auditable verificada por contratos formales, no delegable a librerías genéricas de formateo. |
-| **Control de concurrencia en pagos** | **Desarrollo propio:** Transacción pesimista en `pagos.service.ts` | El negocio exige reglas estrictas de reserva temporal (`reserved_cents`), amortización parcial y validación de idempotencia, lo cual se construyó sobre consultas SQL atómicas parametrizadas. |
-| **Aritmética monetaria exacta** | **Desarrollo propio:** `money.ts` | Convierte cualquier monto de entrada a enteros de céntimos (`toCents`) antes de cualquier cálculo, erradicando los errores de redondeo de punto flotante de JavaScript (`0.1 + 0.2 !== 0.3`). |
-
-## 5. Problemas de runtime
-
-En los cursos de ingeniería de software, a menudo nos enfocamos en que el código compile y pase las pruebas unitarias básicas; sin embargo, cuando una aplicación se ejecuta en un entorno real con múltiples usuarios y procesos simultáneos, surgen problemas de tiempo de ejecución (*runtime*) que pueden colapsar el sistema. 
-
-Para SplitVision, el equipo identificó y resolvió dos problemas críticos de runtime propios de nuestra arquitectura:
-
-### 5.1 Problema 1: Fugas de memoria (*Memory Leaks*) y saturación del Event Loop por procesamiento OCR
-
-#### A. Diagnóstico y causa técnica
-Para extraer el texto de las boletas sin costo de servidores cloud, utilizamos `tesseract.js`, el cual ejecuta el motor Tesseract OCR compilado a WebAssembly (código binario de C++ corriendo dentro del motor V8 de Node.js). 
-
-Durante las primeras pruebas locales identificamos un problema grave: cada vez que se procesaba una imagen, Tesseract cargaba en memoria los módulos WebAssembly (`.wasm`) y los archivos de entrenamiento del idioma español (`spa.traineddata`, que pesan más de 15 MB). En Node.js, la memoria asignada a WebAssembly se reserva fuera del espacio común del *Garbage Collector* de JavaScript. Si se instancia un worker de OCR por cada solicitud y no se gestiona su destrucción explícita mediante `worker.terminate()`, la memoria RAM nunca se libera. Tras procesar apenas 10 o 15 imágenes consecutivas, el consumo de memoria del proceso crecía descontroladamente hasta alcanzar el límite fijado por Node.js, provocando la caída fatal del sistema con el error:
-
-```text
-FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
-```
-
-Además, el procesamiento de OCR es intensivo en uso de procesador (CPU-bound). Si este análisis se ejecutara dentro del mismo proceso que atiende a los usuarios, el hilo principal de Node.js (*Event Loop*) quedaría congelado durante 3 a 5 segundos por cada boleta, impidiendo que cualquier otro usuario pueda consultar sus deudas o iniciar sesión.
-
-#### B. Solución implementada
-1. **Desacoplamiento en proceso independiente (`worker.ts`):** Separamos por completo la ejecución del OCR del proceso web de la API. El usuario recibe una respuesta HTTP inmediata indicando que su comprobante fue recibido (`PROCESANDO`), mientras que un proceso Worker en segundo plano toma la tarea desde la base de datos. Si el Worker llegara a consumir demasiada memoria o fallar, la API de SplitVision sigue funcionando al 100% para todos los demás usuarios.
-2. **Ciclo de vida controlado del motor OCR:** En (`ocr.client.ts`), el worker de Tesseract se instancia de forma controlada y, al finalizar la lectura de la imagen o en caso de error, se asegura la liberación de memoria nativa.
-3. **Mecanismo de timeout y Circuit Breaker:** Se configuró un tiempo límite de ejecución mediante `opossum`. Si una imagen corrupta o ilegible causa un bucle infinito en el analizador de Tesseract, la tarea se aborta a los 10 segundos, evitando que el proceso quede saturado indefinidamente.
+| Componente                                 | Decisión                                                           | Justificación técnica                                                                                                                                                                                                    |
+| :----------------------------------------- | :----------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cifrado de contraseñas**                 | **Reúso:** `@node-rs/argon2`                                       | En seguridad nunca se debe inventar criptografía propia; Argon2 es el estándar actual recomendado para contraseñas.                                                                                                      |
+| **Circuit Breaker**                        | **Reúso:** `opossum`                                               | Provee el control de estados (`CLOSED`, `OPEN`, `HALF-OPEN`), contadores de fallos y _timeouts_ ya probados en producción.                                                                                               |
+| **Validación y normalización de entradas** | **Desarrollo propio:** validadores en servicios y `money.ts`       | En vez de depender de decoradores mágicos, programamos validaciones explícitas (`toCents`, `detectImageKind` por _magic bytes_ y expresiones regulares) que nos dan control total sobre los mensajes y códigos de error. |
+| **Cola de trabajos asíncronos**            | **Desarrollo propio:** `receipt_jobs` con `FOR UPDATE SKIP LOCKED` | Evita levantar servicios extras como Redis y nos permite encolar el trabajo en la misma transacción SQL donde se guarda la boleta.                                                                                       |
+| **Algoritmo de división de gastos**        | **Desarrollo propio:** `split-calculator.ts`                       | La regla para repartir centavos sobrantes sin perder dinero es parte central de nuestro dominio y debía estar bajo nuestro control y verificada por contratos.                                                           |
+| **Control de concurrencia y compensación** | **Desarrollo propio:** `pagos.service.ts` y `eventos.service.ts`   | La lógica de saldos reservados (`reserved_cents`), confirmación en bandeja y cruce de deudas mutuas se programó a medida usando transacciones con `SELECT ... FOR UPDATE`.                                               |
 
 ---
 
-### 5.2 Problema 2: Agotamiento del pool de conexiones a la base de datos y retención de bloqueos (*Connection Starvation & Lock Contention*)
+## 5. Problemas de runtime
+
+Cuando el software pasa de correr una prueba aislada a ejecutarse con usuarios reales subiendo fotos y registrando pagos al mismo tiempo, aparecen problemas de tiempo de ejecución (_runtime_) que no se ven al compilar. En SplitVision identificamos y solucionamos dos problemas importantes de runtime:
+
+### 5.1 Problema 1: Fugas de memoria (_Memory Leaks_) y bloqueo del Event Loop por el motor OCR
 
 #### A. Diagnóstico y causa técnica
-PostgreSQL y Node.js se comunican a través de un grupo de conexiones compartidas conocido como *Connection Pool* (típicamente configurado con un límite de 10 a 20 conexiones simultáneas). Cada vez que el backend necesita ejecutar una transacción (por ejemplo, registrar un pago), toma una conexión del pool y la mantiene ocupada hasta que la transacción finaliza con `COMMIT` o `ROLLBACK`.
 
-El riesgo de runtime ocurre cuando se combinan operaciones de red/disco lentas dentro de una transacción que aplica bloqueos a nivel de fila (`SELECT ... FOR UPDATE`). Si un programador comete el error de abrir la transacción y, *mientras la transacción está abierta*, guarda la fotografía del voucher en el disco duro o realiza llamadas HTTP lentas, la conexión a la base de datos queda "secuestrada" durante cientos de milisegundos y la fila de la deuda queda bloqueada.
+Para leer las boletas localmente usamos `tesseract.js`, que carga en Node.js el motor Tesseract compilado en WebAssembly (`.wasm`) junto con el diccionario del idioma español (`spa.traineddata`, de más de 15 MB).
 
-Si 10 usuarios intentan registrar o consultar pagos al mismo tiempo:
-1. Las 10 conexiones del pool se agotan rápidamente.
-2. Las nuevas solicitudes que llegan quedan esperando en cola hasta que salta un error de tiempo de espera (`Connection timeout`).
-3. La aplicación colapsa y no puede responder a ningún usuario, a pesar de que el servidor tenga CPU y memoria disponible.
+Durante las pruebas encontramos dos riesgos graves en tiempo de ejecución:
+
+1. **Fuga de memoria nativa:** La memoria que reserva WebAssembly vive fuera del _Garbage Collector_ normal de JavaScript. Si creamos un worker de Tesseract por cada imagen y nos olvidamos de cerrarlo con `worker.terminate()` (por ejemplo, cuando ocurre una excepción a mitad de lectura), esos bloques de memoria nunca se liberan y tras unas cuantas boletas el proceso muere con el error:
+   ```text
+   FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+   ```
+2. **Congelamiento del Event Loop:** El reconocimiento óptico hace uso intensivo del procesador durante varios segundos. Si corriera dentro del proceso principal de la API, bloquearía el hilo de Node.js y ningún otro usuario podría ni siquiera iniciar sesión o ver sus eventos mientras se analiza una boleta.
 
 #### B. Solución implementada
-Aplicamos una regla de diseño defensivo fundamental: **"Mantener las transacciones lo más cortas y ligeras posible"**.
 
-En (`pagos.service.ts`), el flujo se diseñó en dos etapas estrictamente separadas:
+1. **Separación en proceso Worker (`src/worker.ts`):** Sacamos toda la ejecución del OCR a un proceso aparte que lee la tabla `receipt_jobs`. Así la API responde al instante y su _Event Loop_ queda libre para atender peticiones web.
+2. **Liberación garantizada de recursos:** El cliente de Tesseract gestiona de forma controlada la vida del worker nativo asegurando su cierre incluso si la imagen lanza un error de lectura.
+3. **Corte por tiempo límite (_Timeout_):** Envolvemos la llamada en el Circuit Breaker de `opossum` (`breaker.ts`) con un `timeoutMs` estricto para abortar cualquier lectura que se quede colgada por una imagen dañada.
 
-1. **Etapa previa (fuera de la transacción de BD):** 
-   - Se valida el formato y tamaño de la imagen del voucher.
-   - Se guarda el archivo en el sistema de almacenamiento en disco (`this.storage.saveImage(...)`).
-   - Se calcula el hash SHA-256 de la imagen en memoria.
-2. **Etapa transaccional atómica (`withTx`):**
-   - Recién una vez que la imagen está persistida en disco, se pide una conexión al pool de base de datos.
-   - Se adquiere el bloqueo pesimista sobre la deuda (`SELECT ... FOR UPDATE`).
-   - Se realizan únicamente operaciones en memoria y consultas SQL puras (verificar que `amountCents <= available`, insertar el pago y actualizar `reserved_cents`).
-   - Se ejecuta el `COMMIT` de inmediato.
+---
 
-Gracias a esta separación, la transacción relacional y el bloqueo de fila duran **menos de 15 milisegundos**. La conexión se devuelve instantáneamente al pool, permitiendo que el sistema soporte alta concurrencia sin saturar PostgreSQL ni dejar peticiones colgadas. En caso de que la transacción falle, un bloque `try/catch` defensivo elimina la imagen que se guardó en disco para no dejar archivos huérfanos.
+### 5.2 Problema 2: Agotamiento del pool de conexiones y retención de bloqueos
+
+#### A. Diagnóstico y causa técnica
+
+El backend se conecta a PostgreSQL mediante un _Connection Pool_ con un número limitado de conexiones simultáneas. Cuando abrimos una transacción con `withTx` y ejecutamos un `SELECT ... FOR UPDATE`, esa conexión queda ocupada y la fila de la deuda queda bloqueada hasta que se haga `COMMIT` o `ROLLBACK`.
+
+El problema de runtime ocurre si metemos operaciones lentas de disco o de cálculo pesado _adentro_ de la transacción abierta. Por ejemplo, al subir un comprobante o registrar un pago con foto de evidencia: si primero abrimos la transacción SQL, bloqueamos la deuda y recién ahí validamos los 5 MB de la imagen, calculamos su hash SHA-256 y escribimos el archivo en el disco duro, la transacción se queda abierta muchísimo más tiempo del necesario. Si varios usuarios suben pagos a la vez, se acaban las conexiones disponibles del pool y las demás peticiones fallan por _timeout_.
+
+#### B. Solución implementada
+
+Aplicamos la regla de **mantener las transacciones SQL lo más cortas posibles**, sacando todo el trabajo de archivos fuera de la transacción:
+
+En `comprobantes.service.ts` (`upload`) y `pagos.service.ts`:
+
+1. **Fase 1 — Fuera de la transacción (I/O de disco y hashing en memoria):**
+   - Primero verificamos permisos rápidos y llamamos a `this.storage.saveImage(buffer, ...)`.
+   - Ahí se validan los _magic bytes_, se calcula el hash SHA-256 y se escribe el archivo en `./data/images` sin tocar ninguna transacción ni bloquear filas en PostgreSQL.
+2. **Fase 2 — Transacción ultrarrápida (`withTx`):**
+   - Recién con el archivo ya guardado en disco, abrimos la transacción `READ COMMITTED`, tomamos el bloqueo `SELECT ... FOR UPDATE` (en el caso de pagos), ejecutamos únicamente los `INSERT`/`UPDATE` necesarios y hacemos `COMMIT` de inmediato.
+3. **Limpieza compensatoria en caso de fallo:**
+   - Si la transacción SQL falla (por ejemplo, porque el saldo disponible ya no alcanzaba o la imagen estaba duplicada), el bloque `catch` llama a `this.storage.delete(path)` para borrar la imagen recién creada y no dejar archivos basura huérfanos en el disco.
 
 ---
 
 ## 6. Contratos y programación defensiva
 
-En el desarrollo de software confiable, existen dos técnicas complementarias que evitan que el sistema produzca resultados incorrectos: el **Diseño por Contratos (*Design by Contract - DbC*)**, formulado por Bertrand Meyer, y la **Programación Defensiva**.
+En el proyecto combinamos dos técnicas que cumplen roles distintos según en qué parte del código estemos:
 
-Como equipo de 7mo ciclo, distinguimos claramente cuándo aplicar cada una:
-- **Design by Contract (DbC):** Se aplica en la comunicación **interna** entre nuestros propios módulos de software. Se define un contrato formal basado en *Precondiciones*, *Postcondiciones* e *Invariantes*. Si el llamador cumple las precondiciones, la rutina garantiza matemáticamente cumplir las postcondiciones sin romper el estado del sistema.
-- **Programación Defensiva:** Se aplica en las **fronteras externas** del sistema (datos enviados por usuarios en el navegador, archivos subidos o texto devuelto por el OCR). Aquí no confiamos en nadie; asumimos que los datos pueden venir incompletos, corruptos o malintencionados, y los sanitizamos antes de que entren al dominio.
+- **Programación Defensiva (en la frontera externa):** Todo lo que viene de afuera (formularios del usuario, parámetros en la URL, imágenes subidas o el texto que escupe el OCR) se considera **no confiable**. Lo validamos y limpiamos apenas entra.
+- **Design by Contract - DbC (en el núcleo interno):** Una vez que los datos ya están validados y dentro de nuestros servicios de dominio, nuestras funciones operan bajo contratos claros de _Precondiciones_, _Postcondiciones_ e _Invariantes_.
 
-```
-[ Usuario / Navegador / Archivos ] 
+```text
+[ Usuario / Navegador / Archivos / Motor OCR ]
                │
-               ▼  (Datos no confiables)
+               ▼  (Datos externos no confiables)
    ┌───────────────────────┐
-   │ PROGRAMACIÓN DEFENSIVA│ ──► DTOs, validación MIME, límites de tamaño, verificación humana de OCR.
-   └───────────────────────┘
-               │  (Datos ya sanitizados)
-               ▼
+   │ PROGRAMACIÓN DEFENSIVA│ ──► Magic bytes (detectImageKind), regex, límites de 5 MB,
+   └───────────────────────┘     aislamiento por evento (assertParticipant) y revisión humana de OCR.
+               │
+               ▼  (Datos ya sanitizados y en enteros)
    ┌───────────────────────┐
    │  DESIGN BY CONTRACT   │ ──► split-calculator.ts, pagos.service.ts, money.ts
    │         (DbC)         │     Precondiciones ──► Ejecución ──► Postcondiciones & Invariantes
    └───────────────────────┘
 ```
 
----
-
 ### 6.1. Contratos (Design by Contract)
 
-A continuación, documentamos los **3 componentes del sistema** que implementan contratos de diseño formales:
+Documentamos los **3 componentes principales** que trabajan bajo contratos en nuestro código:
 
-#### Contrato 1: Motor de división de gastos y asignación de residuos (`split-calculator.ts`)
+#### Contrato 1: Motor de división de gastos y asignación de residuos (`src/modules/reparto/split-calculator.ts`)
 
-Este componente es el corazón matemático de SplitVision. Divide el monto total de un comprobante entre los participantes, ya sea de forma equitativa o por ítems consumidos.
+Es el encargado de dividir el total de un comprobante entre los participantes, tanto en modo equitativo (`EQUITATIVE`) como por ítems (`BY_ITEM`).
 
-- **Precondiciones (lo que exige la función antes de operar):**
-  1. `totalCents` debe ser un número entero mayor a cero (`totalCents > 0`).
-  2. En modo equitativo, la lista de participantes seleccionados no puede estar vacía (`participantIds.length > 0`).
-  3. En modo por ítems, cada unidad física de cada ítem debe estar asignada exactamente a un participante (sin ítems huérfanos ni asignaciones duplicadas).
-  4. La suma de los precios de los ítems más impuestos y propinas menos descuentos debe coincidir exactamente con `totalCents` ($\text{items} + \text{extras} == \text{totalCents}$).
-- **Postcondiciones (lo que garantiza la función al retornar):**
-  1. Retorna un arreglo de cuotas (`SplitPart[]`) donde cada participante tiene un monto entero en céntimos asignado.
-  2. El resultado es completamente determinista: si se ejecuta varias veces con la misma entrada, el reparto es idéntico (desempates ordenados por identificador único de usuario).
+- **Precondiciones:**
+  1. `totalCents` debe ser un entero mayor a cero (`totalCents > 0`).
+  2. En reparto equitativo, debe haber al menos un participante seleccionado (`participantIds.length > 0`).
+  3. En reparto por ítems, todas las unidades (`1..quantity`) de cada ítem deben estar asignadas a un participante válido del evento, y el cuadre de ítems más impuestos/propina menos descuento debe coincidir con `totalCents`.
+- **Postcondiciones:**
+  1. Devuelve la lista de partes (`parts`) donde cada participante recibe un monto entero no negativo en centavos.
+  2. El cálculo es 100% determinista: ante los mismos datos de entrada, los centavos sobrantes se asignan siempre a las mismas personas (desempatando por orden de `userId`).
 - **Invariante de Dominio (conservación de masa monetaria):**
-  La suma de las partes calculadas para todos los participantes debe ser **exactamente igual al total del comprobante**, sin perder ni crear un solo céntimo por redondeo:
+  La suma de los centavos asignados a todos los participantes es **exactamente igual** al total del comprobante, sin perder ni inventar ni un céntimo:
   $$\sum_{i=1}^{n} \text{parts}[i]\text{.cents} \equiv \text{totalCents}$$
 
-Para resolver el problema clásico de que S/ 100.00 entre 3 personas da S/ 33.3333... (donde $33.33 \times 3 = 99.99$, perdiéndose S/ 0.01), implementamos en la función (`distribute()`) el **método del mayor residuo (*Largest Remainder Method*)**:
-1. Se asigna a cada uno la parte entera del cociente en céntimos: $\lfloor 10000 / 3 \rfloor = 3333$ céntimos (S/ 33.33).
-2. Se calcula el residuo indivisible sobrante: $10000 - (3333 \times 3) = 1$ céntimo.
-3. El céntimo restante se entrega al primer participante según el orden determinista de desempate. Resultado final: Persona A paga S/ 33.34, Persona B paga S/ 33.33 y Persona C paga S/ 33.33. Suma exacta: S/ 100.00.
-
-> **Verificación formal:** En (`App/test/properties.test.ts`), validamos este contrato mediante pruebas de propiedades (*Property-Based Testing*) con `fast-check` ejecutando **1,000 repartos aleatorios** con montos de hasta 100 millones de céntimos; en el 100% de los casos la invariante se cumplió sin excepción.
+Para que nunca falte un centavo (como en S/ 100.00 dividido entre 3), `distribute()` calcula primero la cuota entera base ($\lfloor 10000 / 3 \rfloor = 3333$ céntimos) y reparte el residuo ($10000 \bmod 3 = 1$ céntimo) sumando `1` céntimo a los primeros participantes según el orden determinista (quedando `3334`, `3333` y `3333`, cuya suma da `10000`).
 
 ---
 
-#### Contrato 2: Registro y reserva de pagos amortizados (`pagos.service.ts`)
+#### Contrato 2: Registro y reserva de pagos (`src/modules/pagos/pagos.service.ts`)
 
-Controla la creación de un nuevo pago y su impacto en la deuda que mantiene el deudor con el acreedor.
+Regula el momento en que un deudor registra un abono para pagar total o parcialmente su deuda.
 
 - **Precondiciones:**
-  1. `amountCents` debe ser un entero estrictamente positivo (`amountCents > 0`).
-  2. El método de pago debe pertenecer a la lista permitida (`EFECTIVO`, `YAPE`, `PLIN`, `TRANSFERENCIA`, `OTRO`).
-  3. Si el método es digital (Yape/Plin/Transferencia), la imagen de la evidencia es obligatoria (`hasEvidence === true`).
-  4. El deudor debe ser el usuario autenticado que realiza la solicitud (`debt.debtor_id === userId`).
-  5. El monto a pagar no puede superar el saldo disponible de la deuda:
+  1. `amountCents` debe ser un entero mayor a cero (`amountCents > 0`).
+  2. El medio de pago debe ser uno de los valores válidos: `EFECTIVO`, `YAPE`, `PLIN`, `TRANSFERENCIA` u `OTRO`.
+  3. Si el método es distinto de `EFECTIVO`, debe haberse adjuntado una imagen de evidencia válida.
+  4. El usuario en sesión debe ser el deudor de esa obligación (`debt.debtor_id === userId`).
+  5. Evaluado dentro del bloqueo `FOR UPDATE`, el monto no puede superar el saldo disponible actual:
      $$\mathrm{amountCents} \le \mathrm{amount\_cents} - (\mathrm{confirmed\_cents} + \mathrm{reserved\_cents})$$
 - **Postcondiciones:**
-  1. Se inserta un registro en la tabla `payments` en estado `PENDIENTE` vinculado a la llave de idempotencia.
-  2. El saldo reservado de la deuda se incrementa exactamente en el monto pagado (`reserved_cents += amountCents`).
-  3. Se registra una entrada inmutable en la tabla de auditoría (`audit`).
+  1. Se crea el pago en estado `PENDIENTE` asociado a su `idempotency_key`.
+  2. El campo `reserved_cents` de la deuda aumenta exactamente en `amountCents`.
+  3. Se inserta la traza de auditoría en `audit_logs` dentro de la misma transacción.
 - **Invariante de Dominio:**
-  En todo momento, la suma del dinero confirmado y el dinero reservado en trámite nunca puede exceder el monto total adeudado ni ser negativa:
+  Respaldada también por el constraint SQL `debts_balances_check`, en todo instante se cumple que:
   $$0 \le \mathrm{confirmed\_cents} + \mathrm{reserved\_cents} \le \mathrm{amount\_cents}$$
 
 ---
 
-#### Contrato 3: Normalización y aritmética monetaria exacta (`money.ts`)
+#### Contrato 3: Conversión y aritmética monetaria sin punto flotante (`src/common/money.ts`)
 
-JavaScript utiliza internamente números de punto flotante de doble precisión según la norma `IEEE 754`. Esto causa errores numéricos conocidos en finanzas (por ejemplo, al ejecutar en la consola de Node.js `0.1 + 0.2`, el resultado es `0.30000000000000004`). Para una aplicación de división de cuentas entre amigos, estos decimales espurios destruyen la confianza del usuario.
+Para evitar errores clásicos de punto flotante en JavaScript (donde por ejemplo `19.99 * 100` en IEEE 754 da `1998.9999999999998`), el módulo `money.ts` convierte las entradas directamente mediante manipulación de cadenas de texto:
 
-El módulo (`money.ts`) establece el contrato de cálculo monetario:
-
-- **Precondiciones:**
-  1. La función `toCents(value)` recibe una entrada que debe poder convertirse en un número finito, positivo o cero.
-  2. Si es una cadena de texto, debe cumplir el formato decimal estándar (máximo dos posiciones decimales, ej. `"45.50"` o `"12"`). Se rechazan cadenas no numéricas como `"abc"`, `NaN` o valores infinitos.
+- **Precondiciones de `toCents(value, field)`:**
+  1. `value` debe ser un `number` o `string` que, tras hacer `trim()`, cumpla estrictamente la expresión regular `/^\d{1,9}(\.\d{1,2})?$/` (número no negativo de hasta 9 dígitos enteros y máximo 2 decimales).
+  2. Se rechaza cualquier valor negativo, texto con letras, `NaN`, `null` o con más de 2 decimales lanzando `validation()`.
 - **Postcondiciones:**
-  1. Retorna un número entero estricto que representa la cantidad exacta de céntimos: `Math.round(val * 100)`.
-  2. La función complementaria `formatCents(cents)` siempre retorna una cadena con formato peruano exacto de dos decimales (ej. `3334` céntimos se convierte en `"33.34"`).
+  1. Separa la parte entera y decimal por el punto (`raw.split('.')`) y calcula el entero exacto en centavos mediante `Number(intPart) * 100 + Number((decPart + '00').slice(0, 2))`, verificando además `Number.isSafeInteger(cents)`.
+  2. La función inversa `formatCents(cents)` devuelve siempre el texto formateado con 2 decimales exactos usando división entera y módulo (`Math.floor(abs / 100)` y `abs % 100`).
 - **Invariante:**
-  Ninguna operación financiera interna en el backend maneja números decimales. Todos los cálculos, balances y deudas en la base de datos se almacenan y operan como números enteros (`INTEGER` / `BIGINT`).
+  Toda columna monetaria en PostgreSQL (`total_cents`, `unit_price_cents`, `amount_cents`, `confirmed_cents`, `reserved_cents`) es de tipo `integer` y jamás almacena decimales.
 
 ---
 
 ### 6.2. Programación Defensiva
 
-La programación defensiva en SplitVision protege al sistema de entradas externas mediante cuatro barreras de control:
+Implementamos cuatro barreras defensivas concretas en el código:
 
-#### 1. Validación estricta en el límite de la API (DTOs y Pipes)
-Todas las solicitudes HTTP que ingresan a los controladores de NestJS atraviesan un `ValidationPipe` global configurado de forma estricta:
-```typescript
-app.useGlobalPipes(
-  new ValidationPipe({
-    whitelist: true,            // Elimina automáticamente cualquier propiedad que no esté en el DTO
-    forbidNonWhitelisted: true, // Si el cliente envía parámetros extraños no autorizados, rechaza la petición con HTTP 400
-    transform: true,            // Convierte los tipos de datos primitivos de forma segura
-  }),
-);
-```
-Mediante clases DTO respaldadas por `class-validator` (como `CreateEventDto`, `CreatePaymentDto`, `RegisterUserDto`), aseguramos que ningún parámetro malicioso o inesperado alcance la capa de servicios ni la base de datos.
+#### 1. Validación programática en la entrada de los servicios
 
-#### 2. Validación defensiva de subida de archivos (Comprobantes y Vouchers)
-El sistema acepta imágenes para dos casos: fotos de boletas para el OCR y capturas de pantalla de transferencias (Yape/Plin). Para evitar ataques de subida de archivos maliciosos (por ejemplo, que un usuario intente subir un ejecutable `.exe` o un script disfrazado):
-- **Límite de tamaño:** Se impone un límite estricto de **5 MB**. Archivos que superen este límite son rechazados en el middleware antes de procesarse.
-- **Validación de tipo MIME:** Solo se admiten formatos gráficos reconocidos (`image/jpeg`, `image/png`, `image/webp`).
-- **Nombres de archivo seguros y hashing:** El nombre original del archivo enviado por el usuario se descarta inmediatamente. El archivo se almacena en disco con un nombre generado a partir del hash criptográfico SHA-256 de su contenido (`<hash>.jpg`). Esto garantiza que el usuario no pueda manipular rutas de carpetas (*Path Traversal*) y permite detectar vouchers duplicados.
+Cada servicio valida y limpia sus parámetros antes de ejecutar consultas SQL:
 
-#### 3. Tratamiento de los datos del OCR como información no confiable
-Un error común al trabajar con Inteligencia Artificial u OCR es asumir que la lectura de la máquina es una verdad absoluta. En la realidad, una boleta arrugada, con poca luz o con una tipografía cursiva puede hacer que Tesseract confunda un `"8"` con un `"3"` o lea `"S/ 100.00"` en lugar de `"S/ 10.00"`.
+- **Formatos estrictos con Regex:** Los nombres de usuario se validan con `/^[A-Za-z0-9_]{3,20}$/` (`auth.service.ts`), las referencias de pago con `/^[A-Za-z0-9]{1,50}$/` y los teléfonos/CCI en la configuración de perfil (`auth.service.ts`). Además, estas mismas reglas existen como `CHECK CONSTRAINTS` en PostgreSQL (`001_init.sql`) como segunda línea de defensa.
+- **Rechazo inmediato con `AppException`:** Si un dato no cumple, se lanza la excepción tipada `validation('mensaje')`, que corta la ejecución y responde HTTP 400.
 
-En SplitVision aplicamos programación defensiva al flujo de OCR:
-- Los datos extraídos por el Worker **nunca generan deudas directamente**.
-- El comprobante pasa a un estado intermedio `LISTO` donde se presenta la lectura al usuario que pagó la cuenta.
-- El usuario humano tiene la obligación de inspeccionar los montos, corregir las descripciones o precios erróneos si fuera necesario, y presionar explícitamente "Confirmar Comprobante". Recién en ese momento los datos pasan al dominio para generar las deudas.
+#### 2. Inspección binaria de archivos (_Magic Bytes_) y protección contra _Path Traversal_ (`src/modules/comprobantes/storage.service.ts`)
 
-#### 4. Autorización y aislamiento por Evento (Prevención de IDOR)
-Un fallo clásico de seguridad en aplicaciones web es la *Referencia Directa Insegura a Objetos (IDOR)*, que ocurre cuando un usuario autenticado intenta ver o pagar una deuda de otro grupo simplemente cambiando el identificador en la URL (ej. cambiar `/eventos/1/deudas` por `/eventos/99/deudas`).
+Cuando un usuario sube una imagen (boleta, voucher de pago, foto de evento, avatar o QR), no confiamos en la extensión del archivo ni en el header `Content-Type` del navegador, porque un atacante podría renombrar un script malicioso como `foto.jpg`:
 
-Para prevenir esto defensivamente:
-- En cada servicio (`eventos.service.ts`), antes de consultar o modificar una deuda o comprobante, el sistema verifica en la base de datos que el `userId` en sesión pertenezca activamente a la lista de participantes del evento asociado (`event_participants`).
-- Si el usuario no pertenece al grupo, la solicitud se corta de inmediato con un error **HTTP 403 Forbidden** o **HTTP 404 Not Found**, asegurando que los saldos y comprobantes estén estrictamente aislados dentro de su propio contexto.
+- **Detección por _Magic Bytes_ (`detectImageKind`):** Leemos directamente los primeros bytes del `Buffer` en binario: `0xFF 0xD8 0xFF` para JPEG, `0x89 0x50 0x4E 0x47 0x0D 0x0A 0x1A 0x0A` para PNG, y los encabezados ASCII `RIFF` + `WEBP` para WebP. Si el contenido binario no coincide con ninguno de los tres, se rechaza el archivo.
+- **Tope de 5 MB:** Se verifica que `buffer.length <= MAX_BYTES()` (5 MB por defecto).
+- **Renombrado seguro y prevención de _Path Traversal_:** Ignoramos por completo el nombre original del archivo subido y generamos uno nuevo con `${prefix}-${randomUUID()}.${ext}`. Además, al leer o borrar un archivo en `read(path)` y `delete(path)`, comprobamos que la ruta absoluta resuelta empiece dentro de nuestro directorio autorizado (`!abs.startsWith(this.dir)`), bloqueando cualquier intento de leer archivos del sistema mediante `../../`.
+
+#### 3. Parser defensivo y revisión humana para datos del OCR (`recibo.parser.ts` y `comprobantes.service.ts`)
+
+- Todo payload que sale del OCR pasa por un parser defensivo que descarta ítems sin descripción, cantidades no enteras o precios negativos/cero, y si el resultado no tiene sentido lanza error para marcar la boleta como `FALLIDO` en lugar de meter basura en la base de datos.
+- Aun cuando el OCR tiene éxito, la boleta queda en estado `EXTRAÍDO` y nunca genera deudas hasta que el pagador revise los campos en pantalla y confirme el reparto.
+
+#### 4. Aislamiento por Evento y Sesiones con CSRF (`eventos.service.ts` y `session.guard.ts`)
+
+- **Prevención de IDOR:** Antes de mostrar o editar cualquier evento, comprobante, deuda o balance, el backend ejecuta `assertParticipant(eventId, userId)` o `assertDebtParticipant(debtId, userId)`. Si el usuario autenticado no es miembro de ese grupo, el sistema responde `notFound('evento no encontrado')` (HTTP 404), ocultando incluso la existencia del recurso frente a terceros.
+- **Protección CSRF y fuerza bruta:** `SessionGuard` exige en cada petición `POST`, `PUT`, `PATCH` o `DELETE` que la cabecera `x-csrf-token` coincida con el token guardado en la sesión de base de datos. Asimismo, `login` bloquea temporalmente la cuenta si detecta 5 intentos fallidos en los últimos 10 minutos en la tabla `login_attempts`.
+
+---
 
 ## 7. Estrategia de errores y excepciones
 
+Para evitar bloques `try/catch` desordenados en cada controlador o respuestas de error inconsistentes hacia el frontend, implementamos una política centralizada de manejo de errores, excepciones y trazabilidad en tres capas (`src/common/errors.ts`, `src/common/filters.ts` y `src/common/correlation.ts`).
+
+### 7.1. Taxonomía de excepciones de dominio (`src/common/errors.ts`)
+
+Definimos una clase única de excepción de negocio llamada `AppException`, que recibe un código semántico (`ErrorCode`), un mensaje claro para el usuario y detalles opcionales. Cada código tiene asignado un único estado HTTP:
+
+| Código interno (`ErrorCode`) | Helper en código                       | HTTP Status | Cuándo se utiliza en SplitVision                                                                                                                                                                           |
+| :--------------------------- | :------------------------------------- | :---------: | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VALIDATION`                 | `validation(msg)`                      |   **400**   | Datos de entrada inválidos: montos negativos o con formato incorrecto en `toCents`, imágenes que superan 5 MB o no pasan _magic bytes_, contraseñas cortas.                                                |
+| `UNAUTHORIZED`               | `unauthorized(msg)` / `forbidden(msg)` |   **401**   | Credenciales incorrectas en login, sesión expirada, falta de cookie `sid`, token CSRF inválido o intento de editar un comprobante por alguien que no es el pagador.                                        |
+| `NOT_FOUND`                  | `notFound(msg)`                        |   **404**   | Recurso inexistente o usuario que intenta acceder a un evento, comprobante o deuda al que no pertenece (`assertParticipant`).                                                                              |
+| `CONFLICT`                   | `conflict(msg)`                        |   **409**   | Violación de reglas de estado o concurrencia: intentar pagar más del saldo disponible, editar una boleta ya `CONFIRMADO`, registrar un username/correo duplicado o superar el límite de intentos de login. |
+| `EXTERNAL`                   | `external(msg)` / `OcrExternalError`   |   **502**   | Fallo de comunicación o _timeout_ al invocar al servicio OCR externo.                                                                                                                                      |
+| `INTERNAL`                   | Por defecto en fallos no esperados     |   **500**   | Errores inesperados de infraestructura o programación no previstos.                                                                                                                                        |
+
+### 7.2. Filtro Global de Excepciones (`src/common/filters.ts`)
+
+Registramos `AppExceptionFilter` como filtro global de NestJS (`@Catch()`). Su trabajo es interceptar cualquier excepción que ocurra durante una petición HTTP y transformarla en una respuesta JSON uniforme con la estructura:
+
+```json
+{
+  "code": "CONFLICT",
+  "message": "el monto supera el saldo disponible de la deuda",
+  "correlationId": "b6d9f1a2-4c3e-4a8b-9d1e-2f5a7c8b9e01"
+}
+```
+
+Además de capturar `AppException`, el filtro traduce automáticamente errores técnicos de librerías o de PostgreSQL para que nunca se filtren detalles internos ni _stack traces_ al navegador:
+
+- **Errores de subida de archivos (`MulterError` / `BodyTooLargeError`):** Se convierten en `400 VALIDATION` indicando si el archivo superó los 5 MB.
+- **UUIDs mal formados en URLs (código PostgreSQL `22P02`):** Si alguien envía `/api/events/abc-no-es-uuid`, PostgreSQL lanza el error `22P02`; el filtro lo atrapa y devuelve limpiamente `400 VALIDATION` (_"parámetro inválido: identificador con formato incorrecto"_) en vez de un error 500.
+- **Choques de unicidad (código PostgreSQL `23505`):** Si dos peticiones simultáneas chocan contra un `UNIQUE INDEX`, se traduce automáticamente a `409 CONFLICT` (_"el recurso ya existe"_).
+
+### 7.3. Trazabilidad con `Correlation ID` y Logging Estructurado (`src/common/correlation.ts`)
+
+Cuando hay varios usuarios operando a la vez y un Worker corriendo en paralelo, un log suelto en consola no sirve si no sabemos a qué petición pertenece. Por eso implementamos:
+
+1. **Propagación automática con `AsyncLocalStorage`:** Al entrar cada solicitud HTTP (o al encolarse un trabajo OCR en `receipt_jobs`), se genera un UUID de correlación (`correlationId`) y se ejecuta el flujo dentro de `runWithCorrelation(id, fn)`. Así, cualquier llamada a `logger.info`, `logger.warn`, `logger.error` o `audit()` en cualquier servicio obtiene automáticamente el mismo `correlationId` sin tener que pasarlo como argumento por todas las funciones.
+2. **Niveles de log diferenciados en formato JSON:**
+   - Los errores de cliente o de reglas de negocio (`status < 500`) se registran con `logger.warn('error controlado', { path, code, status, message, correlationId })`.
+   - Los fallos graves (`status >= 500`) se registran con `logger.error('error no controlado', { path, exception, stack, correlationId })` incluyendo la traza completa para depuración interna, pero al usuario solo se le responde `"error interno"` junto con el `correlationId`.
+3. **Bitácora de auditoría (`audit_logs`):** Todas las acciones sensibles (registro, login exitoso o fallido, creación de evento, subida/eliminación de boleta, confirmación de reparto, pagos y compensaciones) dejan un registro en la tabla `audit_logs` con el `user_id`, la operación y el `correlation_id`.
+
+### 7.4. Manejo de errores en el Frontend (`client.ts` y `es-PE.ts`)
+
+En el cliente React, el wrapper `apiFetch` (`src/api/client.ts`) captura toda respuesta no exitosa y lanza una instancia de `ApiError(status, code, message, correlationId)`:
+
+- Si el servidor devuelve `401` en cualquier ruta distinta al login/registro, `apiFetch` dispara automáticamente el evento global `window.dispatchEvent(new CustomEvent('sesion:caducada'))`, el cual es escuchado por `SesionContext.tsx` para limpiar el estado del usuario y redirigirlo a `/login` sin dejar pantallas rotas.
+- La función `mensajeDeError(err)` (`src/i18n/es-PE.ts`) traduce los códigos de error (`VALIDATION`, `CONFLICT`, `NETWORK`, etc.) a mensajes claros en español peruano que se muestran mediante los componentes `<Alerta>` y `<Toast>`.
+
+---
+
 ## 8. Concurrencia
+
+El manejo de concurrencia es el corazón transaccional de SplitVision. Como varios integrantes de un grupo pueden interactuar al mismo tiempo sobre las mismas deudas y comprobantes, implementamos cuatro mecanismos concretos en el código para evitar condiciones de carrera:
+
+### 8.1. Bloqueo pesimista a nivel de fila (`SELECT ... FOR UPDATE`) en Deudas y Pagos
+
+Todas las operaciones que modifican el estado de una deuda o de un pago se ejecutan dentro del helper transaccional `withTx(this.dataSource, async (em) => { ... })` (`src/common/db.ts`), que abre una transacción con nivel de aislamiento `READ COMMITTED`.
+
+Dentro de la transacción, antes de verificar si el saldo alcanza o si un pago puede confirmarse/cancelarse, bloqueamos la fila de la deuda en PostgreSQL con `SELECT ... FOR UPDATE`:
+
+1. **Al registrar un nuevo pago (`pagos.service.ts`):**
+   Se bloquea la fila de `debts` correspondiente. Si dos peticiones concurrentes llegan al mismo tiempo para pagar la misma deuda, PostgreSQL le entrega el bloqueo a la primera y deja a la segunda esperando hasta que la primera haga `COMMIT`.
+   - La primera petición lee `available = amount_cents - confirmed_cents - reserved_cents`, verifica que `amountCents <= available`, inserta el pago `PENDIENTE` y actualiza `reserved_cents = reserved_cents + amountCents`.
+   - Recién cuando la primera hace `COMMIT`, la segunda petición despierta y lee los valores **ya actualizados** de `reserved_cents`. Si el nuevo saldo disponible ya no alcanza, lanza `conflict()` (HTTP 409) y hace `ROLLBACK`.
+2. **Al confirmar, rechazar o cancelar un pago (`pagos.service.ts`):**
+   Cuando el deudor intenta cancelar su pago pendiente al mismo instante en que el acreedor intenta confirmarlo desde su bandeja, el bloqueo `FOR UPDATE` serializa ambas acciones: la primera cambia el estado del pago de `PENDIENTE` a `CONFIRMADO` (o `CANCELADO`), y cuando entra la segunda ve que el pago ya no está `PENDIENTE`, rechazando la operación con HTTP 409 sin descontar ni liberar dos veces el saldo reservado.
+3. **En la compensación automática de deudas cruzadas (`compensateCrossDebts` en `eventos.service.ts`):**
+   Cuando se cruzan deudas mutuas entre participantes de un evento, el servicio ejecuta:
+   ```sql
+   SELECT id, debtor_id, creditor_id, amount_cents, confirmed_cents, reserved_cents
+   FROM debts
+   WHERE event_id = $1 AND (amount_cents - confirmed_cents - reserved_cents) > 0
+   ORDER BY created_at ASC
+   FOR UPDATE
+   ```
+   Al bloquear todas las deudas abiertas del evento ordenadas por `created_at ASC`, evitamos _deadlocks_ (interbloqueos) y garantizamos que ningún pago manual interfiera mientras se están calculando e insertando los abonos de `COMPENSACION`.
+
+### 8.2. Llaves de Idempotencia (`Idempotency-Key`) frente a reintentos y _Double-Submit_
+
+En redes móviles es muy común que el usuario presione "Enviar pago" y, por un microcorte de señal, la petición se envíe dos veces. Para resolverlo de extremo a extremo:
+
+1. En el frontend (`Pago.tsx`), al enviar el formulario se genera un identificador único con `const idempotencyKey = crypto.randomUUID()` y se adjunta en la cabecera HTTP `idempotency-key`.
+2. En la base de datos (`001_init.sql`), la tabla `payments` tiene el índice único compuesto:
+   ```sql
+   CREATE UNIQUE INDEX payments_idempotent ON payments (debt_id, idempotency_key);
+   ```
+3. Si llegan dos peticiones con la misma `(debt_id, idempotency_key)`, el backend detecta que ya existe ese registro y devuelve el pago previamente creado marcando `existing: true`, sin duplicar el cobro ni alterar `reserved_cents`.
+
+El mismo principio de idempotencia se aplica al subir imágenes de comprobantes mediante el índice único `CREATE UNIQUE INDEX receipts_event_image_hash ON receipts (event_id, image_hash) WHERE image_hash IS NOT NULL` (`001_init.sql` y `comprobantes.service.ts`): si el usuario sube dos veces la misma foto en el mismo evento, el sistema detecta el mismo hash SHA-256 y devuelve el comprobante existente (`existing: true`) en lugar de duplicar la boleta.
+
+### 8.3. Concurrencia sin contención en la cola de OCR (`FOR UPDATE SKIP LOCKED`) y Migraciones
+
+- **Reclamo concurrente de tareas OCR:** Además del índice parcial `CREATE UNIQUE INDEX receipt_jobs_one_active ON receipt_jobs (receipt_id) WHERE status IN ('PENDING','RUNNING')` que impide encolar dos tareas activas para un mismo comprobante, los workers usan `FOR UPDATE SKIP LOCKED` para tomar trabajos en paralelo sin bloquearse entre sí.
+- **Sincronización en el arranque (`pg_advisory_lock` en `src/db/migrate.ts`):** Cuando se levanta el entorno con Docker Compose, los contenedores de la `api` y del `worker` arrancan al mismo tiempo e intentan correr las migraciones SQL. Para evitar una condición de carrera creando tablas a la vez, `runMigrations()` ejecuta `await client.query('SELECT pg_advisory_lock(772001)')` antes de revisar `schema_migrations`, garantizando que un proceso espere al otro de forma ordenada.
+
+---
 
 ## 9. Tolerancia a fallas
 
+Dado que el reconocimiento óptico de imágenes puede fallar por fotos borrosas, demoras de red o saturación de recursos, diseñamos tres mecanismos de resiliencia que trabajan juntos para que el usuario nunca se quede bloqueado:
+
+### 9.1. Mecanismo 1: Circuit Breaker con Fallback automático al OCR local (`src/modules/ocr/breaker.ts`)
+
+Utilizamos la librería `opossum` en la función `crearOcrBreaker(externo, local, opts)` para envolver las llamadas al proveedor de OCR externo (`HttpOcrClient`):
+
+- **Configuración del circuito:** Define un tiempo máximo de espera por lectura (`timeoutMs`), un porcentaje de fallos para abrir el circuito (`errorThresholdPercentage`), un mínimo de peticiones antes de evaluar (`volumeThreshold: 2`) y el tiempo de enfriamiento antes de volver a probar (`resetTimeout`).
+- **Degradación automática (_Fallback_):** Si está activo `fallbackLocal`, cada vez que el servicio externo falla, tarda más del timeout o el circuito se encuentra abierto (`OPEN`), `opossum` ejecuta automáticamente `breaker.fallback((imagePath) => local.extract(imagePath))`, redirigiendo la lectura al motor local de Tesseract sin que la tarea falle.
+- **Autorecuperación (`HALF-OPEN` $\rightarrow$ `CLOSED`):** Pasado el tiempo de `resetMs`, el circuito pasa a estado semiabierto (`halfOpen`), deja pasar una solicitud de prueba al servicio externo y, si responde bien, cierra el circuito (`close`) volviendo a la normalidad y registrando cada transición en los logs estructurados.
+
+### 9.2. Mecanismo 2: Cola persistente con Arriendos (_Leases_) y Reintentos en `receipt_jobs`
+
+Si tanto el OCR externo como el local fallan ante una imagen complicada, o si el proceso Worker se reinicia inesperadamente en medio de una lectura, la tabla `receipt_jobs` protege el trabajo mediante:
+
+1. **Arriendo temporal (_Lease_ con expiración):** Cuando el Worker reclama una tarea, la pasa a estado `RUNNING`, anota su identificador en `lease_owner` y fija una fecha de vencimiento en `lease_expires_at`. Si el Worker sufre un _crash_ o se queda sin memoria antes de terminar, el arriendo vence (`lease_expires_at < now()`) y el trabajo vuelve a ser elegible automáticamente en el siguiente ciclo sin perderse.
+2. **Conteo de intentos y retroceso (`attempts` y `next_attempt_at`):** Si ocurre un error durante la extracción, el Worker incrementa `attempts`, guarda la causa en `last_error` y programa el siguiente intento en `next_attempt_at`. Si se alcanza el número máximo de intentos sin éxito, la tarea se marca como `FAILED` y el comprobante pasa a estado `FALLIDO` informando el `fail_reason`.
+
+### 9.3. Mecanismo 3: Recuperación asistida y degradación elegante a ingreso manual
+
+En un caso real, si la boleta física tiene la tinta térmica borrada o está muy arrugada, ningún OCR del mundo podrá adivinar los números con certeza. Para que eso nunca detenga las cuentas del grupo, implementamos un flujo completo de recuperación en el frontend (`DiagnosticoLecturaFallida.tsx` y `SubirComprobante.tsx`) y en el backend (`comprobantes.service.ts`):
+
+1. **Completar a mano reutilizando el comprobante fallido (`POST /api/events/:id/receipts/manual`):** El pagador puede pulsar _"Completar a mano"_, lo que lleva a `/eventos/:id/comprobantes/nuevo?fallido=:receiptId`. Al guardar los montos digitados, `createManual` actualiza ese mismo comprobante que estaba en estado `FALLIDO` pasándolo a `EXTRAÍDO` (`replaceItemsAndData(body.receiptId, data, 'FALLIDO')`), conservando la foto adjunta como respaldo visual para el grupo.
+2. **Reintentar lectura OCR (`POST /api/receipts/:id/retry`):** Permite al pagador volver a encolar un nuevo trabajo `PENDING` en `receipt_jobs` si el fallo fue temporal.
+3. **Subir otra toma o descartar (`DELETE /api/receipts/:id`):** Permite eliminar el comprobante fallido (limpiando también su archivo en disco) para tomar una foto con mejor luz.
+
+---
+
 ## 10. Pruebas y resultados
 
+Para demostrar que los contratos, el control de concurrencia y los mecanismos de tolerancia a fallas funcionan de verdad y no solo en teoría, construimos una suite de pruebas automatizadas en el backend (con **Jest**, **Testcontainers** y **fast-check**) y en el frontend (con **Vitest** y **React Testing Library**).
+
+### 10.1. Estrategia de pruebas implementada
+
+| Nivel de prueba                                                  | Herramientas                           | Qué verifica en SplitVision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| :--------------------------------------------------------------- | :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. Pruebas basadas en propiedades (_Property-Based Testing_)** | `Jest` + `fast-check`                  | Ejecuta **1,000 combinaciones generadas al azar** de montos totales (hasta 100 millones de centavos), listas de participantes y cantidades de ítems sobre `split-calculator.ts`. Comprueba que **siempre** se cumpla la invariante $\sum \text{partes} \equiv \text{totalCents}$, que ninguna parte sea negativa y que el reparto sea determinista.                                                                                                                                                                        |
+| **2. Pruebas de Concurrencia real en Base de Datos**             | `Jest` + `Testcontainers` (PostgreSQL) | Levanta un contenedor real de PostgreSQL, aplica las migraciones SQL (`001_init.sql` a `006_billetera_y_cci.sql`) y dispara múltiples peticiones simultáneas con `Promise.all` sobre una misma deuda. Demuestra que `SELECT ... FOR UPDATE` serializa los pagos, rechaza con `409 CONFLICT` los que exceden el saldo disponible, respeta la `Idempotency-Key` y mantiene intacta la invariante `confirmed_cents + reserved_cents <= amount_cents`.                                                                         |
+| **3. Pruebas de Resiliencia e Inyección de Fallas OCR**          | `Jest` + `FakeOcrClient` + `opossum`   | Usando la variable `FAKE_OCR_MODE` en `FakeOcrClient` (`ocr.client.ts`), inyectamos sin necesidad de internet tres tipos de fallas: `fail` (error 503 del servicio externo), `timeout`/`slow` (demoras de 60s para disparar el timeout del Circuit Breaker) y `corrupt` (JSON malformado con totales negativos e ítems inválidos: `{ total: -5, items: 'no-es-una-lista' }`). Verifica que el Circuit Breaker active el fallback local o marque el comprobante como `FALLIDO` tras agotar reintentos sin tumbar el Worker. |
+| **4. Pruebas de Seguridad y Programación Defensiva**             | `Jest` + Supertest                     | Verifica el rechazo de archivos que no tienen _magic bytes_ de imagen válida o superan 5 MB (`400 VALIDATION`), el bloqueo de acceso a eventos ajenos (`404 NOT FOUND`), el rechazo de mutaciones sin cabecera `x-csrf-token` (`401 UNAUTHORIZED`) y el bloqueo tras 5 intentos fallidos de login (`409 CONFLICT`).                                                                                                                                                                                                        |
+| **5. Pruebas de Componentes y Flujos UI**                        | `Vitest` + `@testing-library/react`    | Verifica en el frontend la renderización de estados de comprobantes, el simulador interactivo de liquidación cruzada (`ReciboInteractivo.tsx`), el cálculo en vivo de cuotas en `Reparto.tsx` y el manejo de errores de sesión.                                                                                                                                                                                                                                                                                            |
+
+### 10.2. Reproducción del escenario concurrente
+
+El escenario crítico de concurrencia se reproduce de manera automatizada lanzando en paralelo varias promesas de pago contra una deuda de S/ 100.00 (`10000` centavos):
+
+- **Caso A (Sobregiro concurrente):** Se lanzan al mismo tiempo dos pagos de S/ 60.00 (`6000` centavos) y S/ 70.00 (`7000` centavos) con distintas llaves de idempotencia. El test comprueba que exactamente uno responde éxito (`PENDIENTE`, dejando `reserved_cents = 6000`) y el segundo recibe `409 CONFLICT`, quedando la deuda sin sobregiro.
+- **Caso B (Doble envío idempotente):** Se lanzan en simultáneo dos peticiones con la misma `Idempotency-Key` por S/ 60.00. El test verifica que solo se inserta una fila en `payments` y que `reserved_cents` sube una única vez a `6000`.
+- **Caso C (Choque Deudor vs Acreedor):** Se lanza al mismo tiempo `cancel` (por el deudor) y `confirm` (por el acreedor) sobre un mismo pago `PENDIENTE`. El test verifica que solo una transición gana el bloqueo y la otra recibe `409 CONFLICT`, manteniendo `confirmed_cents + reserved_cents` consistente.
+
+---
+
 ## 11. Limitaciones y trabajo futuro
+
+### 11.1. Limitaciones actuales de la versión v1.0
+
+1. **Actualización de estados mediante _Polling_ HTTP:** En esta versión v1.0, el frontend consulta periódicamente el estado del comprobante mientras está `PROCESANDO` (cada 1 segundo con TanStack Query) y refresca las bandejas/balances cada 5 segundos. Aunque es muy confiable y simple de mantener, genera peticiones repetidas cuando hay muchos clientes abiertos.
+2. **Almacenamiento de imágenes en disco local (`./data/images`):** `StorageService` guarda las fotos en una carpeta local compartida por volumen entre la API y el Worker. Esto funciona muy bien en un despliegue de un solo nodo con Docker Compose, pero limita escalar el Worker en máquinas físicamente separadas sin un almacenamiento de objetos compartido.
+3. **Observabilidad centrada en logs y auditoría en BD:** Contamos con logs JSON estructurados con `correlationId` y la tabla `audit_logs`, pero aún no se exponen métricas agregadas en tiempo real (como histogramas de latencia de OCR o tasa de apertura del Circuit Breaker) en un endpoint de monitoreo.
+4. **Moneda única (PEN):** El formateador e ingreso de montos está enfocado exclusivamente en soles peruanos (`es-PE`, `S/`).
+
+### 11.2. Evolución prevista hacia el Examen Final (v2.0)
+
+Siguiendo la hoja de ruta del curso SW707 para las Unidades 3 y 4, el equipo evolucionará esta base v1.0 en los siguientes frentes:
+
+- **Configuración externalizada y _Feature Flags_:** Incorporar un módulo de configuración dinámica y banderas de funcionalidades (_feature flags_) que permitan habilitar o deshabilitar en caliente el proveedor OCR externo, la auto-compensación de deudas o nuevos modos de reparto sin redesplegar el código.
+- **Observabilidad completa (Métricas y Trazas):** Añadir recolección de métricas de rendimiento (tiempos de respuesta por endpoint, duración de lectura de Tesseract, uso de memoria del Worker y estado del Circuit Breaker) junto con trazas de extremo a extremo entre la API y el Worker.
+- **Profiling y optimización de rendimiento:** Medir con herramientas de _profiling_ el consumo de CPU/RAM del Worker OCR y el tiempo de respuesta de las consultas de balance y compensación bajo volúmenes altos de comprobantes, aplicando optimizaciones medibles con un antes y después (_baseline vs optimizado_).
+- **Mantenimiento, refactorización e ingeniería reversa:** Aplicar refactorizaciones respaldadas por nuestra suite de pruebas (por ejemplo, extraer máquinas de estados declarativas basadas en tablas para las transiciones de `ReceiptStatus` y `PaymentStatus`) y documentar los cambios según su categoría de mantenimiento (correctivo, adaptativo, perfectivo y preventivo). revisa
