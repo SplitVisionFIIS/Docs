@@ -1,5 +1,3 @@
-<USER_REQUEST>
-
 # Documento Técnico Parcial (v1.0) - SplitVision
 
 **Curso:** Construcción de Software II (SW707)
