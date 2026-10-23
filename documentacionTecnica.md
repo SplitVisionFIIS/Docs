@@ -501,7 +501,7 @@ Además, el procesamiento de OCR es intensivo en uso de procesador (CPU-bound). 
 
 #### B. Solución implementada
 1. **Desacoplamiento en proceso independiente (`worker.ts`):** Separamos por completo la ejecución del OCR del proceso web de la API. El usuario recibe una respuesta HTTP inmediata indicando que su comprobante fue recibido (`PROCESANDO`), mientras que un proceso Worker en segundo plano toma la tarea desde la base de datos. Si el Worker llegara a consumir demasiada memoria o fallar, la API de SplitVision sigue funcionando al 100% para todos los demás usuarios.
-2. **Ciclo de vida controlado del motor OCR:** En [`ocr.client.ts`](file:///C:/Users/USER/Documents/GitHub/SplitVisionFIIS/App/src/modules/ocr/ocr.client.ts), el worker de Tesseract se instancia de forma controlada y, al finalizar la lectura de la imagen o en caso de error, se asegura la liberación de memoria nativa.
+2. **Ciclo de vida controlado del motor OCR:** En (`ocr.client.ts`), el worker de Tesseract se instancia de forma controlada y, al finalizar la lectura de la imagen o en caso de error, se asegura la liberación de memoria nativa.
 3. **Mecanismo de timeout y Circuit Breaker:** Se configuró un tiempo límite de ejecución mediante `opossum`. Si una imagen corrupta o ilegible causa un bucle infinito en el analizador de Tesseract, la tarea se aborta a los 10 segundos, evitando que el proceso quede saturado indefinidamente.
 
 ---
@@ -521,7 +521,7 @@ Si 10 usuarios intentan registrar o consultar pagos al mismo tiempo:
 #### B. Solución implementada
 Aplicamos una regla de diseño defensivo fundamental: **"Mantener las transacciones lo más cortas y ligeras posible"**.
 
-En [`pagos.service.ts`](file:///C:/Users/USER/Documents/GitHub/SplitVisionFIIS/App/src/modules/pagos/pagos.service.ts#L48-L113), el flujo se diseñó en dos etapas estrictamente separadas:
+En (`pagos.service.ts`), el flujo se diseñó en dos etapas estrictamente separadas:
 
 1. **Etapa previa (fuera de la transacción de BD):** 
    - Se valida el formato y tamaño de la imagen del voucher.
@@ -582,12 +582,12 @@ Este componente es el corazón matemático de SplitVision. Divide el monto total
   La suma de las partes calculadas para todos los participantes debe ser **exactamente igual al total del comprobante**, sin perder ni crear un solo céntimo por redondeo:
   $$\sum_{i=1}^{n} \text{parts}[i]\text{.cents} \equiv \text{totalCents}$$
 
-Para resolver el problema clásico de que S/ 100.00 entre 3 personas da S/ 33.3333... (donde $33.33 \times 3 = 99.99$, perdiéndose S/ 0.01), implementamos en la función [`distribute()`](file:///C:/Users/USER/Documents/GitHub/SplitVisionFIIS/App/src/modules/reparto/split-calculator.ts#L43-L91) el **método del mayor residuo (*Largest Remainder Method*)**:
+Para resolver el problema clásico de que S/ 100.00 entre 3 personas da S/ 33.3333... (donde $33.33 \times 3 = 99.99$, perdiéndose S/ 0.01), implementamos en la función (`distribute()`) el **método del mayor residuo (*Largest Remainder Method*)**:
 1. Se asigna a cada uno la parte entera del cociente en céntimos: $\lfloor 10000 / 3 \rfloor = 3333$ céntimos (S/ 33.33).
 2. Se calcula el residuo indivisible sobrante: $10000 - (3333 \times 3) = 1$ céntimo.
 3. El céntimo restante se entrega al primer participante según el orden determinista de desempate. Resultado final: Persona A paga S/ 33.34, Persona B paga S/ 33.33 y Persona C paga S/ 33.33. Suma exacta: S/ 100.00.
 
-> **Verificación formal:** En [`App/test/properties.test.ts`](file:///C:/Users/USER/Documents/GitHub/SplitVisionFIIS/App/test/properties.test.ts), validamos este contrato mediante pruebas de propiedades (*Property-Based Testing*) con `fast-check` ejecutando **1,000 repartos aleatorios** con montos de hasta 100 millones de céntimos; en el 100% de los casos la invariante se cumplió sin excepción.
+> **Verificación formal:** En (`App/test/properties.test.ts`), validamos este contrato mediante pruebas de propiedades (*Property-Based Testing*) con `fast-check` ejecutando **1,000 repartos aleatorios** con montos de hasta 100 millones de céntimos; en el 100% de los casos la invariante se cumplió sin excepción.
 
 ---
 
@@ -616,7 +616,7 @@ Controla la creación de un nuevo pago y su impacto en la deuda que mantiene el 
 
 JavaScript utiliza internamente números de punto flotante de doble precisión según la norma `IEEE 754`. Esto causa errores numéricos conocidos en finanzas (por ejemplo, al ejecutar en la consola de Node.js `0.1 + 0.2`, el resultado es `0.30000000000000004`). Para una aplicación de división de cuentas entre amigos, estos decimales espurios destruyen la confianza del usuario.
 
-El módulo [`money.ts`](file:///C:/Users/USER/Documents/GitHub/SplitVisionFIIS/App/src/common/money.ts) establece el contrato de cálculo monetario:
+El módulo (`money.ts`) establece el contrato de cálculo monetario:
 
 - **Precondiciones:**
   1. La función `toCents(value)` recibe una entrada que debe poder convertirse en un número finito, positivo o cero.
@@ -664,7 +664,7 @@ En SplitVision aplicamos programación defensiva al flujo de OCR:
 Un fallo clásico de seguridad en aplicaciones web es la *Referencia Directa Insegura a Objetos (IDOR)*, que ocurre cuando un usuario autenticado intenta ver o pagar una deuda de otro grupo simplemente cambiando el identificador en la URL (ej. cambiar `/eventos/1/deudas` por `/eventos/99/deudas`).
 
 Para prevenir esto defensivamente:
-- En cada servicio ([`eventos.service.ts`](file:///C:/Users/USER/Documents/GitHub/SplitVisionFIIS/App/src/modules/eventos/eventos.service.ts), [`pagos.service.ts`](file:///C:/Users/USER/Documents/GitHub/SplitVisionFIIS/App/src/modules/pagos/pagos.service.ts)), antes de consultar o modificar una deuda o comprobante, el sistema verifica en la base de datos que el `userId` en sesión pertenezca activamente a la lista de participantes del evento asociado (`event_participants`).
+- En cada servicio (`eventos.service.ts`), antes de consultar o modificar una deuda o comprobante, el sistema verifica en la base de datos que el `userId` en sesión pertenezca activamente a la lista de participantes del evento asociado (`event_participants`).
 - Si el usuario no pertenece al grupo, la solicitud se corta de inmediato con un error **HTTP 403 Forbidden** o **HTTP 404 Not Found**, asegurando que los saldos y comprobantes estén estrictamente aislados dentro de su propio contexto.
 
 ## 7. Estrategia de errores y excepciones
