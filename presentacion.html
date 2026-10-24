@@ -232,9 +232,9 @@ h2{font-family:var(--font-head);font-size:clamp(1.9rem,4.2vw,3.1rem);line-height
 }
 .receipt.play .scan{opacity:1;animation:scanmove 1.8s ease-in-out forwards}
 @keyframes scanmove{0%{top:-6%}100%{top:103%}}
-.receipt.play .ritem:nth-of-type(1){animation:pop .45s .55s both}
-.receipt.play .ritem:nth-of-type(2){animation:pop .45s .85s both}
-.receipt.play .ritem:nth-of-type(3){animation:pop .45s 1.15s both}
+.receipt.play .ritem:nth-of-type(2){animation:pop .45s .55s both}
+.receipt.play .ritem:nth-of-type(3){animation:pop .45s .85s both}
+.receipt.play .ritem:nth-of-type(4){animation:pop .45s 1.15s both}
 .receipt.play .rtotal{animation:pop .5s 1.5s both}
 .receipt.play .rhead{animation:pop .5s .15s both}
 .receipt.play{border-radius:8px}
@@ -582,7 +582,7 @@ h2{font-family:var(--font-head);font-size:clamp(1.9rem,4.2vw,3.1rem);line-height
       <div>
         <span class="kicker stepk" data-r style="--d:.05s">Paso 2 de 6</span>
         <h2 data-r style="--d:.15s">Alguien paga y sube la boleta</h2>
-        <p class="lead" data-r style="--d:.3s">Mateo paga los <b>S/ 220.00</b> de la cuenta y sube la foto de la boleta al grupo desde su celular.</p>
+        <p class="lead" data-r style="--d:.3s">Mateo paga los <b>S/ 300.00</b> de la cuenta y sube la foto de la boleta al grupo desde su celular.</p>
         <p class="lead" data-r style="--d:.45s">La app revisa que sea una foto real (no un archivo disfrazado) y la manda a leer <b>en segundo plano</b>: nadie se queda esperando.</p>
         <p class="lead" data-r style="--d:.6s"><span class="mut">La misma foto subida dos veces también se detecta.</span></p>
       </div>
@@ -620,7 +620,8 @@ h2{font-family:var(--font-head);font-size:clamp(1.9rem,4.2vw,3.1rem);line-height
           <div class="rhead"><b>LA CRIOLLA · BOLETA</b><span>Mesa 4 · 12:45 p. m.</span></div>
           <div class="ritem"><span class="rq">Lomo saltado</span><span>×1</span><span class="rpr">S/ 120.00</span></div>
           <div class="ritem"><span class="rq">Ají de gallina</span><span>×1</span><span class="rpr">S/ 100.00</span></div>
-          <div class="rtotal"><span>TOTAL</span><span>S/ 220.00</span></div>
+          <div class="ritem"><span class="rq">Ceviche clásico</span><span>×1</span><span class="rpr">S/ 80.00</span></div>
+          <div class="rtotal"><span>TOTAL</span><span>S/ 300.00</span></div>
           <div class="scan"></div>
           <div class="rzig"></div>
         </div>
@@ -664,7 +665,7 @@ h2{font-family:var(--font-head);font-size:clamp(1.9rem,4.2vw,3.1rem);line-height
           <span class="pamt"><small>S/ </small><span class="amt" data-v="10000">100.00</span></span>
         </div>
       </div>
-      <p class="splitnote" data-r style="--d:.8s"><b>La suma cuadra siempre al centavo</b> (S/ 220.00 exactos). Solo generan deuda las partes de quienes <b>no</b> pagaron la cuenta.</p>
+      <p class="splitnote" data-r style="--d:.8s"><b>La suma cuadra siempre al centavo</b> (S/ 300.00 exactos). Solo generan deuda las partes de quienes <b>no</b> pagaron la cuenta.</p>
     </div>
   </section>
 
