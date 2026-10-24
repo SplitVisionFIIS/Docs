@@ -355,8 +355,83 @@ h2{font-family:var(--font-head);font-size:clamp(1.9rem,4.2vw,3.1rem);line-height
 .f-row .fr.ok{color:#8defc8;font-weight:700}
 .bigq{font-family:var(--font-head);font-size:clamp(2rem,5.5vw,3.6rem);background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;margin:0 auto 34px;letter-spacing:-.02em}
 
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+.zone{display:grid;gap:14px}
+.zonehead{font-family:var(--font-head);font-size:1.05rem}
+.zonehead.vio{color:#c9bcff}
+.zonehead.mint{color:#9df0d8}
+.zdesc{color:var(--mut);font-size:.9rem;line-height:1.5}
+.znote{color:var(--mut);font-size:.8rem;line-height:1.45}
+.files{display:grid;gap:10px}
+.file{
+  display:grid;grid-template-columns:auto 1fr auto;gap:2px 12px;align-items:center;
+  background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px 16px;
+  cursor:pointer;transition:border-color .25s;color:var(--ink);font-family:var(--font-body);text-align:left;width:100%;
+}
+.file:hover{border-color:rgba(124,92,255,.55)}
+.file .fico{grid-column:1;grid-row:1/3;font-size:1.25rem}
+.file .fmeta{grid-column:2;grid-row:1;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.file .fname{font-weight:600;font-size:.9rem}
+.file .fsize{color:var(--mut);font-size:.75rem}
+.file .fstate{grid-column:3;grid-row:1;font-weight:800;color:var(--mut);min-width:1em;text-align:right}
+.file .fverdict{grid-column:2/4;grid-row:2;max-height:0;overflow:hidden;opacity:0;transition:all .35s;font-size:.8rem;font-weight:600}
+.file.ok{border-color:rgba(34,211,166,.55)}
+.file.ok .fstate{color:#8defc8}
+.file.ok .fverdict{max-height:2.6em;opacity:1;color:#8defc8}
+.file.bad{border-color:rgba(255,110,110,.5)}
+.file.bad .fstate{color:#ff9d9d}
+.file.bad .fverdict{max-height:2.6em;opacity:1;color:#ff9d9d}
+.promises{display:grid;gap:10px}
+.promise{
+  display:flex;gap:14px;align-items:flex-start;background:var(--card2);
+  border:1px solid var(--line);border-radius:14px;padding:13px 16px;transition:transform .2s,border-color .2s;
+}
+.promise:hover{transform:translateX(5px);border-color:rgba(34,211,166,.45)}
+.promise .pic2{font-size:1.25rem}
+.promise b{display:block;font-family:var(--font-head);font-size:.92rem;margin-bottom:3px}
+.promise .d{color:var(--mut);font-size:.84rem;line-height:1.45}
+
+.simcard{max-width:620px;margin:0 auto;display:grid;gap:18px;text-align:left}
+.simtitle{flex:1}
+.simtitle b{display:block;font-family:var(--font-head)}
+.simtitle span{color:var(--mut);font-size:.78rem}
+.simbarwrap{display:grid;gap:8px}
+.simbar{height:14px;border-radius:99px;background:var(--card2);border:1px solid var(--line);overflow:hidden}
+.simbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ffd37a,#f59e0b);border-radius:99px;transition:width .6s ease}
+.simlabels{display:flex;justify-content:space-between;font-size:.82rem;color:var(--mut)}
+.simlabels b{color:var(--ink);font-variant-numeric:tabular-nums}
+.simbtns{display:flex;gap:10px;flex-wrap:wrap}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--mut)}
+.btn.ghost:hover{border-color:rgba(255,255,255,.4);color:var(--ink);box-shadow:none}
+.simlog{display:grid;gap:8px;align-content:start;min-height:86px;max-height:160px;overflow-y:auto;
+  padding:12px 14px;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:14px}
+.logline{font-size:.85rem;line-height:1.45;animation:pop .4s both}
+.logline.idle{color:var(--mut)}
+.logline.ok{color:#8defc8}
+.logline.bad{color:#ff9d9d}
+.logline.dup{color:#c9bcff}
+.mechchips{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-top:26px}
+
+.planwrap{max-width:620px;margin:0 auto;display:grid;gap:10px}
+.plan{display:flex;align-items:center;gap:14px;padding:15px 18px;transition:border-color .3s,background .3s}
+.plan .phead{flex:1;display:flex;gap:12px;align-items:center;min-width:0}
+.plan .pe{font-size:1.45rem}
+.plan .phead b{display:block;font-family:var(--font-head);font-size:.95rem}
+.plan .phead span{color:var(--mut);font-size:.78rem}
+.pstat{font-size:.72rem;font-weight:700;padding:5px 12px;border-radius:999px;border:1px solid var(--line);color:var(--mut);white-space:nowrap;transition:all .3s}
+.plan.run{border-color:rgba(124,92,255,.6)}
+.plan.run .pstat{background:rgba(124,92,255,.15);border-color:rgba(124,92,255,.5);color:#c9bcff}
+.plan.okstat{border-color:rgba(34,211,166,.55);background:rgba(34,211,166,.06)}
+.plan.okstat .pstat{background:rgba(34,211,166,.14);border-color:rgba(34,211,166,.5);color:#8defc8}
+.plan.failstat{border-color:rgba(255,110,110,.5)}
+.plan.failstat .pstat{background:rgba(255,110,110,.12);border-color:rgba(255,110,110,.45);color:#ff9d9d}
+.planlink{text-align:center;color:var(--mut);font-size:.78rem;font-weight:600;letter-spacing:.03em}
+.planbanner{margin:20px auto 0;max-width:56ch;color:var(--mut);font-size:1rem;min-height:1.5em;transition:color .3s}
+.planbanner.happy{color:#8defc8}
+
 @media (max-width:960px){
   .grid2{grid-template-columns:1fr;gap:34px}
+  .duo{grid-template-columns:1fr}
   .grid2 .visual{order:2}
   .featgrid{grid-template-columns:1fr 1fr}
   .arch{grid-template-columns:1fr 1fr}
@@ -545,8 +620,7 @@ h2{font-family:var(--font-head);font-size:clamp(1.9rem,4.2vw,3.1rem);line-height
           <div class="rhead"><b>LA CRIOLLA · BOLETA</b><span>Mesa 4 · 12:45 p. m.</span></div>
           <div class="ritem"><span class="rq">Lomo saltado</span><span>×1</span><span class="rpr">S/ 120.00</span></div>
           <div class="ritem"><span class="rq">Ají de gallina</span><span>×1</span><span class="rpr">S/ 100.00</span></div>
-          <div class="ritem"><span class="rq">Ceviche clásico</span><span>×1</span><span class="rpr">S/ 80.00</span></div>
-          <div class="rtotal"><span>TOTAL</span><span>S/ 300.00</span></div>
+          <div class="rtotal"><span>TOTAL</span><span>S/ 220.00</span></div>
           <div class="scan"></div>
           <div class="rzig"></div>
         </div>
@@ -714,6 +788,128 @@ h2{font-family:var(--font-head);font-size:clamp(1.9rem,4.2vw,3.1rem);line-height
   </section>
 
   <section class="slide">
+    <div class="wrap">
+      <div class="center" style="margin-bottom:26px">
+        <span class="kicker stepk" data-r style="--d:.05s">Técnica 1 · Contratos y programación defensiva</span>
+        <h2 data-r style="--d:.15s">Afuera se desconfía, adentro se promete</h2>
+        <p class="lead" data-r style="--d:.25s;margin:0 auto">Todo lo que viene de afuera se revisa antes de entrar; y el motor de cuentas solo guarda si cumple sus promesas.</p>
+      </div>
+      <div class="duo">
+        <div class="card zone" data-r style="--d:.35s">
+          <div class="zonehead vio">🛡️ En la puerta: nada se confía</div>
+          <p class="zdesc">Formularios, archivos y hasta lo que lee la boleta entran como sospechosos. Haz clic en cada archivo:</p>
+          <div class="files">
+            <button class="file" data-verdict="ok">
+              <span class="fico">📄</span>
+              <span class="fmeta"><span class="fname">boleta.jpg</span><span class="fsize">2 MB</span></span>
+              <span class="fstate">…</span>
+              <span class="fverdict">Imagen de verdad · aceptada</span>
+            </button>
+            <button class="file" data-verdict="bad">
+              <span class="fico">🧨</span>
+              <span class="fmeta"><span class="fname">foto.jpg</span><span class="fsize">1 MB</span></span>
+              <span class="fstate">…</span>
+              <span class="fverdict">No es una imagen de verdad (script disfrazado) · rechazada</span>
+            </button>
+            <button class="file" data-verdict="bad">
+              <span class="fico">🐘</span>
+              <span class="fmeta"><span class="fname">capture.png</span><span class="fsize">8 MB</span></span>
+              <span class="fstate">…</span>
+              <span class="fverdict">Supera el máximo de 5 MB · rechazada</span>
+            </button>
+          </div>
+          <p class="znote">Además: nadie de fuera del grupo puede ver sus gastos y las contraseñas se guardan cifradas.</p>
+        </div>
+        <div class="card zone" data-r style="--d:.5s">
+          <div class="zonehead mint">📜 En el motor: contratos que se cumplen</div>
+          <div class="promises">
+            <div class="promise">
+              <span class="pic2">🧮</span>
+              <div><b>La suma exacta</b><span class="d">las partes siempre suman el total de la boleta, al céntimo, antes de guardar nada.</span></div>
+            </div>
+            <div class="promise">
+              <span class="pic2">⚖️</span>
+              <div><b>El saldo no se rompe</b><span class="d">nunca se reserva ni se confirma más de lo que se debe.</span></div>
+            </div>
+            <div class="promise">
+              <span class="pic2">🔢</span>
+              <div><b>Dinero en enteros</b><span class="d">los montos viven como centavos enteros: sin decimales frágiles que se redondeen mal.</span></div>
+            </div>
+          </div>
+          <p class="znote">Si una promesa no se cumple, el cálculo se detiene y avisa — nunca guarda cuentas raras.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap center">
+      <span class="kicker stepk" data-r style="--d:.05s">Técnica 2 · Concurrencia</span>
+      <h2 data-r style="--d:.15s">Dos pagan a la vez… y nada se rompe</h2>
+      <p class="lead" data-r style="--d:.25s;margin:0 auto 24px">Mala señal: el mismo pago puede viajar dos veces. Y con entusiasmo, alguien abona más de lo que debe. El sistema aguanta todo — pruébalo:</p>
+      <div class="simcard card" data-r style="--d:.35s">
+        <div class="simhead">
+          <span class="av av-l">L</span>
+          <div class="simtitle"><b>Deuda de Lucía con Mateo</b><span>Almuerzo Criollo</span></div>
+          <span class="damt">S/ 100.00</span>
+        </div>
+        <div class="simbarwrap">
+          <div class="simbar"><i id="simFill"></i></div>
+          <div class="simlabels"><span>Reservado: <b id="simRes">S/ 0.00</b></span><span>Disponible: <b id="simAvail">S/ 100.00</b></span></div>
+        </div>
+        <div class="simbtns">
+          <button class="btn" id="pay60">💸 Pagar S/ 60</button>
+          <button class="btn" id="pay70">💸 Pagar S/ 70</button>
+          <button class="btn ghost" id="simReset">↺ Reiniciar</button>
+        </div>
+        <div class="simlog" id="simlog">
+          <div class="logline idle">Registro de eventos — haz clic en un botón de pago…</div>
+        </div>
+      </div>
+      <div class="mechchips" data-r style="--d:.5s">
+        <span class="chip">🔒 Fila india: la misma deuda se toca de a una</span>
+        <span class="chip">🔑 Llave anti doble-envío: lo repetido se ignora</span>
+        <span class="chip">🚫 Lo que no alcanza se rechaza, sin romper saldos</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="wrap">
+      <div class="center" style="margin-bottom:22px">
+        <span class="kicker stepk" data-r style="--d:.05s">Técnica 3 · Tolerancia a fallas</span>
+        <h2 data-r style="--d:.15s">Si algo falla, nadie se queda atascado</h2>
+        <p class="lead" data-r style="--d:.25s;margin:0 auto">La lectura de una boleta puede fallar por mil motivos. Por eso hay <b>tres planes encadenados</b>:</p>
+      </div>
+      <div class="planwrap" data-r style="--d:.35s">
+        <div class="plan card" id="planA">
+          <div class="phead"><span class="pe">☁️</span><div><b>Plan A · Lector en la nube</b><span>rápido, cuando la red anda bien</span></div></div>
+          <span class="pstat">en espera</span>
+        </div>
+        <div class="planlink">si falla → salta solo, sin que nadie note</div>
+        <div class="plan card" id="planB">
+          <div class="phead"><span class="pe">💻</span><div><b>Plan B · Lector local</b><span>dentro del servidor, sin depender de la nube</span></div></div>
+          <span class="pstat">en espera</span>
+        </div>
+        <div class="planlink">si también falla → tú decides</div>
+        <div class="plan card" id="planC">
+          <div class="phead"><span class="pe">✍️</span><div><b>Plan C · Completar a mano</b><span>escribes los montos y la foto queda de respaldo</span></div></div>
+          <span class="pstat">en espera</span>
+        </div>
+      </div>
+      <div class="center" style="margin-top:26px" data-r style="--d:.5s">
+        <button class="btn" id="failBtn">🌩️ Simular un mal día</button>
+        <p class="planbanner" id="planBanner">Todo en calma: la boleta se lee con el Plan A.</p>
+      </div>
+      <div class="mechchips" data-r style="--d:.6s">
+        <span class="chip">🔁 Reintentos automáticos, con pausa entre intentos</span>
+        <span class="chip">📦 Una lectura a medias no se pierde: se retoma</span>
+        <span class="chip">📸 La foto original siempre queda de respaldo</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
     <div class="wrap center">
       <span class="kicker" data-r style="--d:.05s">Por debajo del capó</span>
       <h2 data-r style="--d:.15s">¿Cómo está construido?</h2>
@@ -768,7 +964,7 @@ h2{font-family:var(--font-head);font-size:clamp(1.9rem,4.2vw,3.1rem);line-height
 </div>
 
 <div id="bar">
-  <span id="counter">1 / 13</span>
+  <span id="counter">1 / 16</span>
   <div id="dots"></div>
   <button class="navbtn" id="prevBtn" aria-label="Anterior">‹</button>
   <button class="navbtn" id="nextBtn" aria-label="Siguiente">›</button>
@@ -919,6 +1115,96 @@ $$('.confirm').forEach(b=>b.onclick=()=>{
   $('#balBar').style.width=(done/2*100)+'%';
   if(done===2) $('#allDone').classList.add('show');
 });
+
+$$('.file').forEach(f=>f.onclick=()=>{
+  const was=f.classList.contains('ok')||f.classList.contains('bad');
+  f.classList.remove('ok','bad');
+  const st=f.querySelector('.fstate');
+  if(was){ st.textContent='…'; return; }
+  const good=f.dataset.verdict==='ok';
+  f.classList.add(good?'ok':'bad');
+  st.textContent=good?'✓':'✗';
+});
+
+const simState={reserved:0,paid:{}};
+function simRender(){
+  const avail=10000-simState.reserved;
+  $('#simFill').style.width=(simState.reserved/100)+'%';
+  $('#simRes').textContent='S/ '+(simState.reserved/100).toFixed(2);
+  $('#simAvail').textContent='S/ '+(avail/100).toFixed(2);
+}
+function simLog(kind,msg){
+  const log=$('#simlog');
+  const idle=log.querySelector('.idle'); if(idle) idle.remove();
+  const d=document.createElement('div');
+  d.className='logline '+kind; d.textContent=msg;
+  log.prepend(d);
+  while(log.children.length>5) log.lastChild.remove();
+}
+function tryPay(key,cents){
+  if(simState.paid[key]){ simLog('dup','↺ Mismo pago repetido (misma llave) · ya estaba registrado: se ignora.'); return; }
+  const avail=10000-simState.reserved;
+  if(cents>avail){ simLog('bad','✗ Pago de S/ '+(cents/100).toFixed(2)+' rechazado: solo quedan S/ '+(avail/100).toFixed(2)+' disponibles.'); return; }
+  simState.reserved+=cents; simState.paid[key]=true;
+  simLog('ok','✓ Pago de S/ '+(cents/100).toFixed(2)+' registrado · queda en revisión (reservado).');
+  simRender();
+}
+$('#pay60').onclick=()=>tryPay('k60',6000);
+$('#pay70').onclick=()=>tryPay('k70',7000);
+$('#simReset').onclick=()=>{
+  simState.reserved=0; simState.paid={};
+  simRender();
+  $('#simlog').innerHTML='<div class="logline idle">Registro de eventos — haz clic en un botón de pago…</div>';
+};
+
+const plans=[$('#planA'),$('#planB'),$('#planC')];
+function setPlan(el,state,label){
+  el.classList.remove('run','okstat','failstat');
+  if(state==='run') el.classList.add('run');
+  if(state==='ok') el.classList.add('okstat');
+  if(state==='fail') el.classList.add('failstat');
+  el.querySelector('.pstat').textContent=label;
+}
+let planScenario=0, planBusy=false;
+function resetPlans(){
+  plans.forEach(p=>setPlan(p,'idle','en espera'));
+  const b=$('#planBanner');
+  b.textContent='Todo en calma: la boleta se lee con el Plan A.';
+  b.classList.remove('happy');
+  $('#failBtn').textContent='🌩️ Simular un mal día';
+}
+$('#failBtn').onclick=()=>{
+  if(planBusy) return;
+  if(planScenario===0){
+    planScenario=1; planBusy=true;
+    setPlan(plans[0],'run','leyendo…');
+    setTimeout(()=>setPlan(plans[0],'fail','✗ falló'),700);
+    setTimeout(()=>setPlan(plans[1],'run','leyendo…'),950);
+    setTimeout(()=>{
+      setPlan(plans[1],'ok','✓ leyó la boleta');
+      const b=$('#planBanner');
+      b.textContent='La nube falló → saltó solo al lector local: boleta leída igual. ✓';
+      b.classList.add('happy');
+      planBusy=false;
+    },1750);
+  } else if(planScenario===1){
+    planScenario=2; planBusy=true;
+    setPlan(plans[0],'fail','✗ falló');
+    setPlan(plans[1],'run','reintentando…');
+    setTimeout(()=>setPlan(plans[1],'fail','✗ falló'),700);
+    setTimeout(()=>setPlan(plans[2],'run','a completar…'),950);
+    setTimeout(()=>{
+      setPlan(plans[2],'ok','✓ lista a mano');
+      const b=$('#planBanner');
+      b.textContent='Ni la nube ni el lector local pudieron → se completa a mano. El grupo sigue. ✓';
+      b.classList.add('happy');
+      planBusy=false;
+      $('#failBtn').textContent='↺ Volver a la calma';
+    },1750);
+  } else {
+    planScenario=0; resetPlans();
+  }
+};
 
 (function buildQr(){
   const qr=$('#qr'); if(!qr) return;
