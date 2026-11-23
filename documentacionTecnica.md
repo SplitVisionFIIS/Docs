@@ -1,4 +1,4 @@
-# Documento Técnico Parcial (v1.0) - SplitVision
+# Documento Técnico Final (v2.0) - SplitVision
 
 **Curso:** Construcción de Software II (SW707)
 
@@ -8,7 +8,7 @@
 - Luis Angel Vargas Ponce — 20231314E
 - Farid Zamudio — 20231215G
 
-**Fecha:** Octubre de 2026
+**Fecha:** Noviembre de 2026
 
 ---
 
@@ -802,3 +802,115 @@ Siguiendo la hoja de ruta del curso SW707 para las Unidades 3 y 4, el equipo evo
 - **Profiling y optimización de rendimiento:** Medir con herramientas de _profiling_ el consumo de CPU/RAM del Worker OCR y el tiempo de respuesta de las consultas de balance y compensación bajo volúmenes altos de comprobantes, aplicando optimizaciones medibles con un antes y después (_baseline vs optimizado_).
 - **Mantenimiento, refactorización e ingeniería reversa:** Aplicar refactorizaciones respaldadas por nuestra suite de pruebas (por ejemplo, extraer máquinas de estados declarativas basadas en tablas para las transiciones de `ReceiptStatus` y `PaymentStatus`) y documentar los cambios según su categoría de mantenimiento (correctivo, adaptativo, perfectivo y preventivo).
 
+---
+
+## 12. Estados y construcción basada en tablas
+
+Las transiciones de estado del dominio se modelan con una máquina de estados finita construida a partir de tablas. La clase genérica `StateMachine<TState>` (`src/common/fsm.ts`) almacena las reglas como datos (`Map<estado, Set<estados permitidos>>`) en lugar de cadenas de `if/else`; agregar o cambiar una transición consiste en editar la tabla.
+
+**Interfaz de la clase:**
+
+| Método | Función |
+| :-- | :-- |
+| `canTransition(from, to)` | Consulta en O(1) si la transición es válida |
+| `allowedTransitions(from)` | Lista los estados alcanzables desde un estado |
+| `assertTransition(from, to, contextId)` | Lanza un error `CONFLICT` (HTTP 409) si la transición es ilegal y registra un log estructurado con el estado de origen, el destino y los permitidos. La transición al mismo estado se trata como idempotente |
+
+**Tablas definidas:**
+
+| Máquina | Origen | Destinos permitidos |
+| :-- | :-- | :-- |
+| `RECEIPT_FSM` (comprobante) | `CARGADO` | `PROCESANDO` |
+| | `PROCESANDO` | `EXTRAÍDO`, `FALLIDO` |
+| | `EXTRAÍDO` | `CONFIRMADO`, `FALLIDO` |
+| | `FALLIDO` | `PROCESANDO` (reintento OCR), `EXTRAÍDO` (carga manual) |
+| | `CONFIRMADO` | ninguno (estado terminal) |
+| `PAYMENT_FSM` (pago) | `PENDIENTE` | `CONFIRMADO`, `RECHAZADO`, `CANCELADO` |
+| | `CONFIRMADO`, `RECHAZADO`, `CANCELADO` | ninguno (estados terminales) |
+
+**Integración con los servicios:**
+
+- `reparto.service.ts` invoca `RECEIPT_FSM.assertTransition(status, 'CONFIRMADO', receiptId)` al confirmar el reparto de un comprobante.
+- `pagos.service.ts` invoca `PAYMENT_FSM.assertTransition(status, target, paymentId)` al confirmar, rechazar o cancelar un pago. La validación ocurre dentro de la transacción que ya mantiene el bloqueo `SELECT ... FOR UPDATE` sobre la deuda y el pago (sección 8), por lo que la comprobación de la transición y su ejecución son atómicas.
+
+Un pago ya confirmado no puede cancelarse y un comprobante confirmado no puede volver a procesarse: el intento falla con `409 CONFLICT`. Las pruebas están en `test/fsm.test.ts` y en los escenarios de pagos de `test/api.test.ts`.
+
+---
+
+## 13. Configuración e internacionalización
+
+### 13.1. Configuración externalizada
+
+Ningún parámetro operativo está fijado en el código: todos se leen de variables de entorno, definidas en la plantilla `.env.example` e inyectadas a los contenedores desde `docker-compose.yml`. El archivo `.env` real está excluido del repositorio mediante `.gitignore`.
+
+| Grupo | Variables |
+| :-- | :-- |
+| Base de datos y servidor | `DATABASE_URL`, `PORT`, `IMAGE_DIR` |
+| Sesión y seguridad | `SESSION_SECRET`, `SESSION_HOURS`, `LOGIN_MAX_ATTEMPTS`, `LOGIN_WINDOW_MIN` |
+| Carga de archivos | `MAX_UPLOAD_MB` |
+| Cola de trabajos | `JOB_POLL_MS`, `JOB_LEASE_S` |
+| OCR | `OCR_PROVIDER` (`fake` / `local` / `http`), `OCR_URL`, `OCR_TIMEOUT_MS`, `OCR_MAX_ATTEMPTS`, `OCR_BACKOFF_MS`, `OCR_BREAKER_THRESHOLD`, `OCR_BREAKER_RESET_MS`, `OCR_FALLBACK`, `OCR_LANG`, `OCR_TESSDATA`, `OCR_CACHE_DIR`, `FAKE_OCR_MODE` |
+
+Esto permite cambiar el proveedor OCR, los tiempos de espera, los reintentos o los límites de seguridad sin recompilar, y usar valores distintos en desarrollo, pruebas y contenedores.
+
+#### 13.1.1. Feature flags de medios de pago
+
+`FeatureFlagsService` (`src/common/feature-flags.service.ts`) permite habilitar o deshabilitar en caliente los medios de pago Yape y Plin (`enable_yape_payments`, `enable_plin_payments`), con valor inicial tomado de las variables `FEATURE_YAPE` y `FEATURE_PLIN`. `pagos.service.ts` consulta la bandera antes de registrar un pago con ese medio, de modo que un medio puede bloquearse al instante si presenta fallas, sin redesplegar. Cada cambio de valor queda registrado en el log con el valor anterior, el nuevo y el usuario que lo realizó.
+
+### 13.2. Internacionalización
+
+---
+
+## 14. API, integración y distribución
+
+---
+
+## 15. Contenedorización
+
+La aplicación se empaqueta y ejecuta con Docker:
+
+- **`Dockerfile` multi-etapa** (`node:24-alpine`). La etapa `build` instala dependencias y compila TypeScript. La imagen final instala solo dependencias de producción (`npm ci --omit=dev`) y copia únicamente `dist/` y `migrations/`,.
+- **`docker-compose.yml`** define tres servicios:
+
+| Servicio | Imagen / comando | Notas |
+| :-- | :-- | :-- |
+| `postgres` | `postgres:16-alpine` | Volumen `pgdata` y `healthcheck` con `pg_isready` |
+| `api` | `node dist/main.js` | Puerto 3000; volumen `images` |
+| `worker` | `node dist/worker.js` | Misma imagen que la API con distinto comando; comparte el volumen `images` |
+
+- `api` y `worker` esperan a que PostgreSQL esté saludable (`depends_on` con `condition: service_healthy`) y comparten un mismo bloque de variables de entorno (ancla YAML `*common-env`).
+- La API y el Worker corren como contenedores separados, lo que mantiene en la práctica el aislamiento del OCR descrito en la sección 5.1.
+
+Para levantar todo el sistema:
+
+```bash
+docker compose up --build
+```
+
+---
+
+## 16. Observabilidad
+
+---
+
+## 17. Profiling y rendimiento
+
+---
+
+## 18. Refactorización
+
+---
+
+## 19. Mantenimiento
+
+---
+
+## 20. Legacy
+
+---
+
+## 21. Ingeniería reversa
+
+---
+
+## 22. Reingeniería y modernización
